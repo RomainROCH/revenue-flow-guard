@@ -99,6 +99,33 @@ Failures set `data` to `null` and return a stable error object:
 
 Malformed JSON, oversized bodies, unknown routes, invalid sessions, invalid input, and duplicate requests must return controlled 4xx responses. Unexpected failures return a generic 500 response without stack traces.
 
+Request bodies are limited to 16 KiB. The server rejects a body over that limit with `413 BODY_TOO_LARGE`, malformed JSON with `400 INVALID_JSON`, an unsupported media type with `415 UNSUPPORTED_MEDIA_TYPE`, and an unknown route with `404 NOT_FOUND`. “Duplicate request” does not include a valid idempotent order replay; order-specific replay semantics are defined below.
+
+### Route contracts
+
+| Method and route | Request | Success | Controlled failures |
+|---|---|---|---|
+| `GET /api/health` | none | `200` and the exact health shape defined below; no mutable state | none |
+| `POST /api/session` | `{ username, password }`, each 1–100 characters | `201`, public user profile plus session cookie | `400 INVALID_INPUT`, `401 INVALID_CREDENTIALS` |
+| `DELETE /api/session` | valid session cookie when present | `204`; repeated logout is also `204` | none |
+| `GET /api/session` | session cookie | `200`, public user profile | `401 AUTH_REQUIRED` |
+| `GET /api/products` | session cookie | `200`, stable product array | `401 AUTH_REQUIRED` |
+| `POST /api/payment-tokens` | session cookie and `{ scenario }` where scenario is `approved`, `declined`, or `transient_failure` | `201`, one-time opaque fake token and expiry | `400 INVALID_INPUT`, `401 AUTH_REQUIRED` |
+| `POST /api/orders` | session cookie, `Idempotency-Key`, `{ items, paymentToken }` | first success `201`; completed replay `200` | status/code mapping defined below |
+
+Order items contain only `{ productId, quantity }`; quantity is an integer from 1 through 10, the list contains 1 through 20 distinct products, and duplicate product IDs are rejected with `400 INVALID_ITEMS`. The server ignores and rejects client-supplied prices or totals with `400 CLIENT_AMOUNT_FORBIDDEN`.
+
+Health responses use this exact body in normal mode:
+
+```json
+{
+  "data": { "status": "ok", "version": 1, "testMode": false },
+  "error": null
+}
+```
+
+Test mode changes only `testMode` to `true`; health never exposes the test token, fault ID, sessions, or mutable counts.
+
 ### Session model
 
 `POST /api/session` accepts the fixed demonstration credentials and creates an opaque, random session ID held in the server's in-memory store. The browser receives an `HttpOnly`, `SameSite=Strict` cookie. `DELETE /api/session` invalidates it. Protected API routes and protected screens require a valid session.
@@ -111,7 +138,7 @@ This is a local demonstration boundary, not a production identity implementation
 
 ### Fake payment token
 
-The checkout UI accepts only a documented fake token such as `tok_demo_approved` or `tok_demo_declined`. It never renders a card-number field and the server never accepts PAN-like data. The token endpoint models approval, decline, and transient failure without a third-party dependency.
+The checkout UI presents three clearly labeled demonstration payment outcomes: approved, declined, and temporary failure. It never renders a card-number field and the server rejects PAN-like fields. The UI exchanges the selected outcome through `POST /api/payment-tokens` for a random, single-use token that expires after five minutes. The order endpoint accepts only that opaque token. A declined token returns `402 PAYMENT_DECLINED`; a temporary-failure token returns `503 PAYMENT_UNAVAILABLE` with `Retry-After: 1`; an expired or reused token returns `409 PAYMENT_TOKEN_INVALID`. No third-party service is involved.
 
 ### Order submission
 
@@ -122,11 +149,51 @@ The checkout UI accepts only a documented fake token such as `tok_demo_approved`
 - a supported fake payment token;
 - an `Idempotency-Key` header generated once per checkout attempt.
 
-The server calculates the amount, validates stock, records the successful result against the idempotency key, and returns the same order for a repeated identical request. Reuse of the key with a different payload returns `409 IDEMPOTENCY_CONFLICT`.
+After authentication and pre-idempotency structural validation, the server canonicalizes the logical request as `{ items, paymentToken }`: items are sorted first by numeric product ID and then by numeric quantity, and object keys use the documented order. The quantity tie-breaker makes even an invalid duplicate-product payload order-independent. Pre-idempotency failures are not cached: missing/invalid key, non-object body, unknown top-level or item fields, client amount/price fields, non-array items, non-object item entries, non-integer/out-of-range quantities, and a non-string payment token. The server hashes the UTF-8 canonical JSON with SHA-256. Whitespace, JSON property order, and input item order therefore do not change the request hash.
+
+Idempotency lookup always precedes product, stock, and payment-token lookup. Key handling is atomic within the single Node process:
+
+1. If the key exists with another hash, return `409 IDEMPOTENCY_CONFLICT`.
+2. If the matching record is `pending`, return `409 ORDER_IN_PROGRESS` with `Retry-After: 1` without reading or consuming the payment token.
+3. If the matching record is `completed`, return its stored status and body without revalidating products, stock, or token. Successful replay changes the response status from the first request's `201` to `200` and adds `replayed: true`; a deterministic failure replay preserves its original status and body.
+4. If the key is new, reserve `{ key, requestHash, state: "pending" }` before domain validation, payment, or order creation.
+5. After reservation, these domain failures become completed deterministic records with their exact response: empty item list, duplicate product ID, unknown product ID, insufficient stock, expired/invalid/consumed token, and payment decline. Pre-idempotency structural failures listed above are never reserved or cached.
+6. Approved payment consumes the token only in the same synchronous commit that decrements stock, creates the order, and completes the idempotency record.
+7. Payment decline consumes the token and completes the record with the cached `402` response.
+8. A transient payment failure does not consume the token and deletes the pending record, allowing the same key, hash, and token to be retried.
+
+Stock is decremented only when the pending record transitions to a successful completed order. Every controlled order failure leaves stock unchanged.
+
+`POST /api/orders` uses this complete controlled-failure mapping:
+
+| Condition | HTTP status and code |
+|---|---|
+| Missing/invalid session | `401 AUTH_REQUIRED` |
+| Missing idempotency key or invalid body | `400 INVALID_ORDER` |
+| Client price or total present | `400 CLIENT_AMOUNT_FORBIDDEN` |
+| Empty, duplicate, unknown, or invalid-quantity items | `400 INVALID_ITEMS` |
+| Insufficient stock | `409 OUT_OF_STOCK` |
+| Same key, different request hash | `409 IDEMPOTENCY_CONFLICT` |
+| Same key/hash still pending | `409 ORDER_IN_PROGRESS` with `Retry-After: 1` |
+| Expired or already consumed token | `409 PAYMENT_TOKEN_INVALID` |
+| Declined token | `402 PAYMENT_DECLINED` |
+| Temporary payment failure | `503 PAYMENT_UNAVAILABLE` with `Retry-After: 1` |
 
 ### Reset and fault controls
 
-Test-only control endpoints are enabled only when the server starts with `DEMO_TEST_MODE=1`. They reset server state and select one named fault profile. They must reject requests in normal demo mode.
+Test-only control endpoints are registered only when the server starts with `DEMO_TEST_MODE=1`. In normal demo mode they are absent and receive the same generic `404 NOT_FOUND` response as any unknown route. Test mode binds to loopback only and requires a random run token passed by the test process; requests without that token receive `404`, not an authentication hint.
+
+The test process supplies `DEMO_TEST_TOKEN`, and every control request sends it as `X-RFG-Test-Token`. Test-mode contracts are:
+
+| Method and route | Request | Success behavior |
+|---|---|---|
+| `POST /__test/reset` | no body | `204`; restore product stock, clear sessions, orders, payment tokens, idempotency records, request counters, and active fault |
+| `PUT /__test/fault` | `{ faultId }`, where the value is one of the six corpus IDs or `NONE` | `200` with `{ data: { faultId }, error: null }`; reset all mutable state before activating that fault |
+| `GET /__test/state` | no body | `200` with `{ data: { faultId, orderCount, pendingOrderCount, orderRequestCount }, error: null }` |
+
+Malformed authorized control requests receive `400 INVALID_TEST_CONTROL`. Missing or wrong run tokens receive the generic `404 NOT_FOUND` body. Fault state is process-local and cannot change through normal application routes.
+
+Protected browser routes are client-side screens over the protected API boundary. On initial load and every hash change to `#dashboard` or `#checkout`, the browser calls `GET /api/session` before rendering protected content. A `401` clears local cart state, replaces the URL hash with `#login`, and renders only the sign-in screen. Direct navigation to a protected hash must never briefly render protected product or order data.
 
 ## Named Regression Corpus
 
@@ -139,11 +206,50 @@ The suite must prove detection of exactly these six faults:
 | `DUPLICATE_ORDER` | Repeated idempotency key creates another order | Idempotent-order API test |
 | `EMPTY_CART_ACCEPTED` | Checkout succeeds with no line items | Empty-cart validation test |
 | `PAYMENT_DECLINE_HIDDEN` | Declined token is shown as success | Declined-payment UI test |
-| `SUBMIT_REENABLED` | Submit control permits a duplicate in-flight action | Double-submit UI test |
+| `SUBMIT_CONTROL_MISSING` | Submit control remains enabled while the first order request is pending | In-flight-submit UI test |
 
-Each profile changes one behavior. The regression-proof runner starts an isolated server for a profile, executes only the named detecting test, and succeeds only when that test fails for the expected business reason. A fault that does not trigger its designated test fails the proof run.
+Each profile changes one behavior. Every designated assertion carries an exact message `RFG:<fault-id>:<contract-id>`. The regression manifest maps one fault ID to one fully qualified Playwright test ID and one exact assertion-message prefix.
 
-The baseline suite must pass before regression proof begins. Generated evidence records the baseline result, every fault ID, the detecting test, the expected failure signature, and the observed result.
+The regression-proof runner performs these steps for each profile:
+
+1. start a fresh isolated server and verify `/api/health` plus the active fault ID through the token-protected test control;
+2. execute only the manifest's test with Playwright's JSON reporter and retries disabled;
+3. require that the designated test is the only failed test;
+4. require its error message to contain the mapped `RFG:` signature;
+5. reject timeouts, browser-launch failures, fixture failures, server exits, missing results, and mismatched signatures as infrastructure/proof failures;
+6. shut down the server and record the sanitized result.
+
+`SUBMIT_CONTROL_MISSING` delays the first order response after the server accepts it. Its designated assertion checks that the submit button becomes disabled before the response is released. Server idempotency is proven separately and is not accepted as a substitute for that UI contract.
+
+The baseline suite must pass before regression proof begins. Static validation also requires every manifest signature to occur exactly once in the mapped test source. This verifies the proof wiring, not the semantic strength of arbitrary assertions.
+
+## Evidence Manifest
+
+The runner writes `artifacts/public-evidence/evidence.json` using this versioned shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "source": { "commitSha": "…", "ciRunId": "…", "ciRunUrl": "…" },
+  "generatedAt": "2026-07-11T00:00:00Z",
+  "complete": true,
+  "sanitized": true,
+  "baseline": { "status": "passed", "tests": 0, "retries": 0, "durationMs": 0 },
+  "faults": [
+    {
+      "id": "AUTH_BYPASS",
+      "testId": "api/auth.spec.ts > rejects unauthenticated access",
+      "expectedSignature": "RFG:AUTH_BYPASS:AUTH_REQUIRED",
+      "status": "detected",
+      "observedSignature": "RFG:AUTH_BYPASS:AUTH_REQUIRED"
+    }
+  ]
+}
+```
+
+`complete` is true only when the baseline and all six faults were evaluated. `sanitized` is true only after the publication validator passes. The case study renders positive evidence only when both are true, the schema is supported, all six fault IDs are present exactly once, and `source.commitSha` equals the deployed source commit supplied at build time. Otherwise it renders an explicit “Evidence unavailable or incomplete” state and no pass totals.
+
+The deployment pipeline copies this manifest to `/evidence/latest.json`; the application never falls back to a checked-in or previous manifest. `generatedAt`, commit SHA, run ID, and run URL remain visible on the case study.
 
 ## Test Architecture
 
@@ -194,6 +300,10 @@ The workflow does not cache Playwright browser binaries. It may cache npm throug
 
 A scheduled or manually dispatched workflow runs Chromium, Firefox, and WebKit. Cross-browser failures do not silently retry into a passing state; retry classification remains visible in the report.
 
+The public artifact contains only the evidence manifest and a static summary generated from it. Traces, videos, raw Playwright JSON, cookies, request headers, absolute home paths, and server logs are never placed in the public artifact. `npm run validate:public-artifacts` rejects binary files and scans every text file under `artifacts/public-evidence/` for session-cookie names and values, authorization headers, absolute workspace paths, credential strings, private-key headers, known GitHub/OpenAI token prefixes, and 13–19 digit PAN-like sequences; any match or unreadable file makes sanitization fail closed. Screenshots are excluded from the public artifact. Full debugging artifacts, when enabled for a private run, are not uploaded by public workflows.
+
+`npm run scan:secrets` scans the paths returned by `git ls-files` plus `artifacts/public-evidence/` using the same credential/private-key/token rules. It rejects tracked `.env` files other than `.env.example`, rejects binary public artifacts, exits non-zero on any match or scan error, and writes `artifacts/validation/secret-scan.json` containing the commit SHA, scanned-file count, zero-match count, and validator version on success. The only allowlist is a repository file of exact documented fake values; regex or path-wide exclusions are forbidden.
+
 The repository badge must point to a real workflow in the published repository. Local screenshots or hand-written pass tables are supplementary and dated; they never replace CI evidence.
 
 ## Public Case Study
@@ -208,7 +318,7 @@ The root route is the interactive demo. `/case-study.html` is the commercial ent
 6. the sprint deliverables and engagement shape;
 7. a contact call to action supplied before publication.
 
-The page must work without JavaScript for its commercial content. Generated evidence may be progressively enhanced. It must be responsive, keyboard usable, and readable at 200% zoom.
+The page must work without JavaScript for its commercial content. Generated evidence may be progressively enhanced, but the static fallback states only that live evidence requires JavaScript and never embeds stale success. It must be responsive, keyboard usable, and readable at 200% zoom.
 
 No claim may imply that this synthetic demonstration produced client revenue, reduced production defects, or guarantees a release outcome.
 
@@ -237,9 +347,9 @@ Every citation includes a title, authors or owner, year when applicable, stable 
 ## Security and Privacy Boundaries
 
 - No real payment, credential, analytics, or customer data enters the demo.
-- Session IDs are random, server-side, and redacted from logs.
+- Session IDs are random, server-side, and redacted from logs. Local HTTP development uses `HttpOnly; SameSite=Strict; Path=/`; any HTTPS base URL additionally requires `Secure`. Public deployment is HTTPS-only and rejects plain-HTTP requests at the hosting edge.
 - Authentication state and reports containing request context remain gitignored unless sanitized.
-- Test-only controls are disabled in public runtime mode.
+- Test-only controls are not registered in public runtime mode.
 - Public contact information is not inferred from private connector metadata; the user must approve it before publication.
 
 ## Deployment
@@ -248,7 +358,7 @@ The application must read its port and public base URL from runtime configuratio
 
 Publication requires:
 
-- a Git repository with a clean, reviewable history;
+- a Git repository where `git status --porcelain` is empty, `git fsck --no-dangling` succeeds, and `npm run scan:secrets` exits zero with a current-commit zero-match report;
 - a pushed commit matching the deployed source;
 - a successful public CI run;
 - a deployed public URL with test controls disabled;
@@ -256,6 +366,22 @@ Publication requires:
 - a smoke test of the public demo and case-study routes.
 
 Deployment credentials and custom-domain configuration are operational inputs, not repository content.
+
+## Implementation Milestones
+
+The design is implemented through three independently verifiable plans. A later milestone may not weaken an earlier milestone's contracts.
+
+### Milestone 1 — Secure revenue flow and baseline gate
+
+Owns the HTTP application, browser UI, route contracts, session model, payment tokens, idempotent orders, API tests, UI tests, lint, and type checking. It stops when product behavior and three-run baseline acceptance pass locally. It does not build fault profiles, public evidence, the commercial case study, or deployment.
+
+### Milestone 2 — Regression proof and CI evidence
+
+Owns fault profiles, the proof runner, signature manifest, evidence schema, publication sanitizer, pull-request workflow, and scheduled cross-browser workflow. It stops when all six faults are detected without false-positive infrastructure failures and a sanitized complete manifest is produced for the current commit. It does not decide pricing, contact details, or hosting.
+
+### Milestone 3 — Case study and publication
+
+Owns the commercial page, corrected documentation, evidence rendering, repository publication, hosting, and public smoke checks. Implementation can finish with an explicit `publication-inputs-missing` state if approved contact wording, deployment access, or repository access is unavailable. Public deployment remains incomplete until every publication criterion passes.
 
 ## Acceptance Criteria
 
@@ -270,20 +396,25 @@ Deployment credentials and custom-domain configuration are operational inputs, n
 
 - The baseline UI and API suite passes three consecutive local runs without retries.
 - Each of the six named faults is detected by its designated test with the expected failure signature.
-- Removing or weakening a designated assertion causes regression proof to fail.
+- A startup, fixture, timeout, browser, or mismatched-assertion failure cannot satisfy regression proof.
+- Signature-manifest validation passes and every mapped signature occurs exactly once in its test source.
 
 ### Maintainability
 
-- Lint and TypeScript type checking pass with no warnings.
-- No unused exported fixture, helper, route, script, or documentation promise remains.
+- `npm run lint -- --max-warnings=0` and `npm run typecheck` pass.
+- No unused exported fixture or test helper remains, every registered API route has a contract test, and every repository script is referenced by `package.json` or CI.
 - Tests contain no fixed sleeps, CSS/XPath selectors, shared ordering, or unbounded external dependencies.
+- `npm run validate:docs` finds no placeholder repository owner, unsupported numeric claim, broken local link, or stale hand-written pass total.
+- `npm run validate:repo` fails when a first-party exported test helper or fixture has no importing consumer, a file under `scripts/` has no `package.json` or CI reference, a package script references a missing file, or a documented npm command is absent from `package.json`; route-contract tests exercise every registered API route.
 
 ### Publication
 
 - CI evidence is public and linked from the case study.
 - The public runtime exposes no test-control endpoint and no real sensitive data.
+- The public URL uses HTTPS and its session cookie includes `Secure`, `HttpOnly`, `SameSite=Strict`, and `Path=/`.
 - The case study identifies the offer, evidence, limitations, and approved contact path.
-- The live URL passes desktop and mobile smoke checks.
+- The evidence manifest passes schema, commit-match, completeness, and sanitization checks before the case study shows success.
+- The live `/`, `/case-study.html`, `/api/health`, and `/evidence/latest.json` routes pass smoke checks at 1280×720 Desktop Chrome and the Playwright `Pixel 7` viewport; both page routes have no horizontal overflow, all primary controls are keyboard reachable, and the health/evidence responses satisfy their schemas.
 
 ## Stop Conditions
 
@@ -306,4 +437,3 @@ Do not publish if any of these remain true:
 - Laura Inozemtseva and Reid Holmes, *Coverage Is Not Strongly Correlated with Test Suite Effectiveness*, ICSE 2014, https://doi.org/10.1145/2568225.2568271
 - Mike Wacker, *Just Say No to More End-to-End Tests*, Google Testing Blog, 2015, https://testing.googleblog.com/2015/04/just-say-no-to-more-end-to-end-tests.html
 - OWASP, *HTML5 Security Cheat Sheet*: https://cheatsheetseries.owasp.org/cheatsheets/HTML5_Security_Cheat_Sheet.html
-
