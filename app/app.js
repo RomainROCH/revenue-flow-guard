@@ -108,7 +108,7 @@ async function loadProducts() {
         }, 1000);
       });
     });
-  } catch (err) {
+  } catch {
     container.innerHTML = '<p class="error">Could not load products.</p>';
   }
 }

@@ -42,8 +42,8 @@ test.describe('checkout flows', () => {
     await page.getByLabel('Address').fill('123 Main St');
     await page.getByLabel('Card Number').fill('1234567890123456');
 
-    await page.route('**/api/orders', (route) => {
-      route.fulfill({ status: 500 });
+    await page.route('**/api/orders', async (route) => {
+      await route.fulfill({ status: 500 });
     });
     await page.getByRole('button', { name: 'Place Order' }).click();
     await expect(page.getByText(/could not place your order/i)).toBeVisible();

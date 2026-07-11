@@ -4,19 +4,20 @@
   "private": true,
   "scripts": {
     "serve": "node server.js",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "test:ui": "playwright test --ui",
-    "test:debug": "playwright test --debug",
-    "lint": "eslint .",
-    "show-report": "playwright show-report"
+    "test:api": "playwright test tests/api",
+    "test:ui": "playwright test tests/ui",
+    "test:repeat": "playwright test --repeat-each=3 --retries=0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "typescript": "^5.4.0",
+    "@types/node": "^22.20.1",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-playwright": "^2.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0"
+    "typescript": "^5.4.0"
   }
 }

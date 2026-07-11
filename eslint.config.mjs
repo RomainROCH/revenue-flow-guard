@@ -1,15 +1,33 @@
 import playwright from 'eslint-plugin-playwright';
+import tseslint from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import globals from 'globals';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const rootDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 export default [
   {
-    files: ['tests/**/*.ts'],
+    files: ['playwright.config.ts', 'tests/**/*.ts'],
     languageOptions: {
       parser: tsParser,
       ecmaVersion: 'latest',
       sourceType: 'module',
+      parserOptions: {
+        project: './tsconfig.json',
+        tsconfigRootDir: rootDirectory,
+      },
     },
+    plugins: {
+      '@typescript-eslint': tseslint,
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+    },
+  },
+  {
+    files: ['tests/**/*.ts'],
     plugins: {
       playwright,
     },
@@ -22,14 +40,14 @@ export default [
   },
   {
     files: ['app/**/*.js'],
-    plugins: {
-      playwright,
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
     },
     rules: {
-      'playwright/no-wait-for-timeout': 'error',
-      'playwright/prefer-web-first-assertions': 'error',
-      'playwright/no-force-option': 'error',
-      'playwright/valid-expect': 'error',
+      'no-undef': 'error',
+      'no-unused-vars': 'error',
     },
   },
   {
@@ -41,7 +59,7 @@ export default [
     },
     rules: {
       'no-undef': 'error',
-      'no-unused-vars': 'warn',
+      'no-unused-vars': 'error',
     },
   },
 ];
