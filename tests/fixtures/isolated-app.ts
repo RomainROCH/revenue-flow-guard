@@ -5,16 +5,19 @@ import { resolve } from 'node:path';
 import type { Server } from 'node:http';
 
 type ApplicationModule = {
-  createApplication?: () => Server;
+  createApplication?: (options?: { clock?: () => number }) => Server;
 };
 
 type IsolatedApp = {
   baseURL: string;
+  advanceTime: (milliseconds: number) => void;
 };
 
 const missingFactoryError = 'ISOLATED_APP:createApplication is required';
 
-const loadCreateApplication = (): (() => Server) => {
+const loadCreateApplication = (): ((options?: {
+  clock?: () => number;
+}) => Server) => {
   const applicationPath = resolve(
     process.cwd(),
     'src',
@@ -64,13 +67,19 @@ const close = async (server: Server): Promise<void> => {
 export const test = base.extend<{ isolatedApp: IsolatedApp }>({
   isolatedApp: async ({}, use) => {
     const createApplication = loadCreateApplication();
-    const server = createApplication();
+    let now = 0;
+    const server = createApplication({ clock: () => now });
 
     try {
       await listen(server);
       const address = server.address() as AddressInfo;
 
-      await use({ baseURL: `http://127.0.0.1:${address.port}` });
+      await use({
+        baseURL: `http://127.0.0.1:${address.port}`,
+        advanceTime(milliseconds) {
+          now += milliseconds;
+        },
+      });
     } finally {
       await close(server);
     }

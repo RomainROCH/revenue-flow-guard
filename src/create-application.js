@@ -3,6 +3,15 @@
 const fs = require('fs/promises');
 const http = require('http');
 const path = require('path');
+const crypto = require('crypto');
+const { createCatalogService } = require('./domain/catalog-service');
+const { createSessionService } = require('./domain/session-service');
+const { createStore } = require('./domain/store');
+const {
+  readSessionCookie,
+  serializeClearedSessionCookie,
+  serializeSessionCookie,
+} = require('./http/cookies');
 const { ERROR_DEFINITIONS, HttpError } = require('./http/errors');
 const { parseJsonBody } = require('./http/json');
 const { sendData, sendError } = require('./http/responses');
@@ -21,6 +30,24 @@ const STATIC_FILES = Object.freeze({
 });
 
 const JSON_BODY_BOUNDARIES = new Set(['POST /api/session']);
+
+const API_ERRORS = Object.freeze({
+  AUTH_REQUIRED: Object.freeze({
+    status: 401,
+    code: 'AUTH_REQUIRED',
+    message: 'A valid session is required.',
+  }),
+  INVALID_CREDENTIALS: Object.freeze({
+    status: 401,
+    code: 'INVALID_CREDENTIALS',
+    message: 'The username or password is incorrect.',
+  }),
+  INVALID_INPUT: Object.freeze({
+    status: 400,
+    code: 'INVALID_INPUT',
+    message: 'The request contains invalid input.',
+  }),
+});
 
 function requiresJsonBody(request, pathname) {
   return JSON_BODY_BOUNDARIES.has(`${request.method} ${pathname}`);
@@ -46,10 +73,18 @@ async function serveStatic(response, pathname) {
 }
 
 function createApplication({ store, clock, randomBytes, runtime } = {}) {
-  void store;
-  void clock;
-  void randomBytes;
-  void runtime;
+  const applicationStore = store ?? createStore();
+  const generateRandomBytes = randomBytes ?? crypto.randomBytes;
+  const applicationClock = clock ?? Date.now;
+  const applicationRuntime = runtime ?? {
+    publicBaseUrl: 'http://localhost',
+  };
+  const sessions = createSessionService({
+    store: applicationStore,
+    randomBytes: generateRandomBytes,
+    clock: applicationClock,
+  });
+  const catalog = createCatalogService({ store: applicationStore });
 
   const router = createRouter([
     {
@@ -63,6 +98,66 @@ function createApplication({ store, clock, randomBytes, runtime } = {}) {
         });
       },
     },
+    {
+      method: 'POST',
+      path: '/api/session',
+      handler: async (request, response) => {
+        const result = sessions.create(request.body);
+
+        if (result.kind === 'invalid-input') {
+          sendError(response, API_ERRORS.INVALID_INPUT);
+          return;
+        }
+
+        if (result.kind === 'invalid-credentials') {
+          sendError(response, API_ERRORS.INVALID_CREDENTIALS);
+          return;
+        }
+
+        response.setHeader(
+          'Set-Cookie',
+          serializeSessionCookie(result.sessionId, applicationRuntime),
+        );
+        sendData(response, 201, { user: result.user });
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/session',
+      handler: async (request, response) => {
+        const user = sessions.get(readSessionCookie(request));
+
+        if (!user) {
+          sendError(response, API_ERRORS.AUTH_REQUIRED);
+          return;
+        }
+
+        sendData(response, 200, { user });
+      },
+    },
+    {
+      method: 'DELETE',
+      path: '/api/session',
+      handler: async (request, response) => {
+        sessions.remove(readSessionCookie(request));
+        response.writeHead(204, {
+          'Set-Cookie': serializeClearedSessionCookie(applicationRuntime),
+        });
+        response.end();
+      },
+    },
+    {
+      method: 'GET',
+      path: '/api/products',
+      handler: async (request, response) => {
+        if (!sessions.get(readSessionCookie(request))) {
+          sendError(response, API_ERRORS.AUTH_REQUIRED);
+          return;
+        }
+
+        sendData(response, 200, { products: catalog.listProducts() });
+      },
+    },
   ]);
 
   const handleRequest = async (request, response) => {
@@ -70,7 +165,7 @@ function createApplication({ store, clock, randomBytes, runtime } = {}) {
       const url = new URL(request.url ?? '/', 'http://localhost');
 
       if (requiresJsonBody(request, url.pathname)) {
-        await parseJsonBody(request);
+        request.body = await parseJsonBody(request);
       }
 
       if (await router(request, response, url.pathname)) {
