@@ -16,11 +16,27 @@ const elements = {
   productList: document.getElementById('product-list'),
   catalogError: document.getElementById('catalog-error'),
   cartCount: document.getElementById('cart-count'),
+  checkoutContent: document.getElementById('checkout-content'),
+  checkoutItems: document.getElementById('checkout-items'),
+  checkoutTotal: document.getElementById('checkout-total'),
+  checkoutForm: document.getElementById('checkout-form'),
+  checkoutEmpty: document.getElementById('checkout-empty'),
+  checkoutError: document.getElementById('checkout-error'),
+  checkoutSubmit: document.getElementById('checkout-submit'),
+  paymentOutcomes: Array.from(
+    document.querySelectorAll('input[name="payment-outcome"]'),
+  ),
+  orderConfirmation: document.getElementById('order-confirmation'),
+  confirmationTotal: document.getElementById('confirmation-total'),
+  orderId: document.getElementById('order-id'),
 };
 
 let products = [];
 let navigationRevision = 0;
 let validatingAfterLogin = false;
+let checkoutPending = false;
+let checkoutReady = false;
+let retryableAttempt = null;
 
 function readCart() {
   try {
@@ -43,6 +59,11 @@ function writeCart(cart) {
 function clearCart() {
   localStorage.removeItem(CART_STORAGE_KEY);
   renderCartCount();
+}
+
+function resetCheckoutAttempt() {
+  retryableAttempt = null;
+  elements.checkoutSubmit.textContent = 'Place order';
 }
 
 function renderCartCount() {
@@ -119,6 +140,7 @@ function announceCartChange(product, wasRemoved) {
 }
 
 function toggleCartProduct(product) {
+  resetCheckoutAttempt();
   const cart = readCart();
   const productIndex = cart.indexOf(product.id);
   const wasRemoved = productIndex !== -1;
@@ -166,6 +188,257 @@ function renderProducts() {
   elements.productList.replaceChildren(...items);
 }
 
+function cartItems() {
+  const quantities = new Map();
+
+  for (const productId of readCart()) {
+    quantities.set(productId, Math.min((quantities.get(productId) ?? 0) + 1, 10));
+  }
+
+  return Array.from(quantities, ([productId, quantity]) => ({
+    productId,
+    quantity,
+  }));
+}
+
+function renderCheckoutSummary(items) {
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  let estimatedTotalCents = 0;
+  const summaryItems = items.map((item) => {
+    const product = productsById.get(item.productId);
+    const listItem = document.createElement('li');
+    const name = document.createElement('span');
+    const amount = document.createElement('strong');
+
+    name.textContent = product
+      ? `${product.name} × ${item.quantity}`
+      : `Product ${item.productId} × ${item.quantity}`;
+    amount.textContent = product
+      ? formatPrice(product.priceCents * item.quantity)
+      : 'Server price pending';
+    if (product) {
+      estimatedTotalCents += product.priceCents * item.quantity;
+    }
+
+    listItem.append(name, amount);
+    return listItem;
+  });
+
+  elements.checkoutItems.replaceChildren(...summaryItems);
+  elements.checkoutTotal.textContent = formatPrice(estimatedTotalCents);
+}
+
+function setCheckoutPending(pending) {
+  checkoutPending = pending;
+  const controlsDisabled = pending || !checkoutReady;
+
+  elements.checkoutSubmit.disabled = controlsDisabled;
+  for (const outcome of elements.paymentOutcomes) {
+    outcome.disabled = controlsDisabled;
+  }
+
+  showStatus(pending ? 'Processing the demonstration order…' : '');
+}
+
+function hideCheckoutErrors() {
+  elements.checkoutEmpty.classList.add('hidden');
+  elements.checkoutError.classList.add('hidden');
+}
+
+function showCheckoutError(message) {
+  elements.checkoutError.textContent = message;
+  elements.checkoutError.classList.remove('hidden');
+}
+
+async function renderCheckout(revision) {
+  checkoutReady = false;
+  resetCheckoutAttempt();
+  hideCheckoutErrors();
+  elements.orderConfirmation.classList.add('hidden');
+  elements.checkoutContent.classList.remove('hidden');
+
+  const items = cartItems();
+  if (items.length === 0) {
+    renderCheckoutSummary(items);
+    elements.checkoutEmpty.classList.remove('hidden');
+    setCheckoutPending(false);
+    return;
+  }
+
+  setCheckoutPending(false);
+  showStatus('Loading the server catalog…');
+
+  try {
+    const response = await fetch('/api/products');
+    const payload = await readJson(response);
+
+    if (revision !== navigationRevision) {
+      return;
+    }
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok || !payload.data || !Array.isArray(payload.data.products)) {
+      throw new Error(errorMessage(payload, 'Could not prepare checkout.'));
+    }
+
+    products = payload.data.products;
+    renderCheckoutSummary(items);
+    checkoutReady = true;
+    setCheckoutPending(false);
+  } catch (error) {
+    if (revision !== navigationRevision) {
+      return;
+    }
+
+    setCheckoutPending(false);
+    showCheckoutError(
+      error instanceof Error ? error.message : 'Could not prepare checkout.',
+    );
+  }
+}
+
+function selectedPaymentScenario() {
+  const selected = elements.paymentOutcomes.find((outcome) => outcome.checked);
+  return selected ? selected.value : null;
+}
+
+async function createCheckoutAttempt(items) {
+  const scenario = selectedPaymentScenario();
+  if (!scenario) {
+    throw new Error('Choose a demonstration payment outcome.');
+  }
+
+  const response = await fetch('/api/payment-tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario }),
+  });
+  const payload = await readJson(response);
+
+  if (response.status === 401) {
+    await handleUnauthorized();
+    return null;
+  }
+
+  if (
+    !response.ok ||
+    !payload.data ||
+    typeof payload.data.paymentToken !== 'string'
+  ) {
+    throw new Error(
+      errorMessage(payload, 'Could not prepare the demonstration payment.'),
+    );
+  }
+
+  return {
+    idempotencyKey: crypto.randomUUID(),
+    items,
+    paymentToken: payload.data.paymentToken,
+    scenario,
+  };
+}
+
+function renderOrderConfirmation(order) {
+  elements.confirmationTotal.textContent = formatPrice(order.totalCents);
+  elements.orderId.textContent = order.orderId;
+  elements.checkoutContent.classList.add('hidden');
+  elements.orderConfirmation.classList.remove('hidden');
+  clearCart();
+  checkoutReady = false;
+  resetCheckoutAttempt();
+}
+
+function keepAttemptForRetry(attempt) {
+  retryableAttempt = attempt;
+  elements.checkoutSubmit.textContent = 'Retry order';
+}
+
+async function submitCheckout() {
+  if (checkoutPending || !checkoutReady) {
+    return;
+  }
+
+  const items = cartItems();
+  if (items.length === 0) {
+    checkoutReady = false;
+    elements.checkoutEmpty.classList.remove('hidden');
+    setCheckoutPending(false);
+    return;
+  }
+
+  hideCheckoutErrors();
+  setCheckoutPending(true);
+  let attempt = retryableAttempt;
+
+  try {
+    if (!attempt) {
+      attempt = await createCheckoutAttempt(items);
+      if (!attempt) {
+        return;
+      }
+    }
+
+    const response = await fetch('/api/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': attempt.idempotencyKey,
+      },
+      body: JSON.stringify({
+        items: attempt.items,
+        paymentToken: attempt.paymentToken,
+      }),
+    });
+    const payload = await readJson(response);
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      const code = payload && payload.error ? payload.error.code : null;
+      if (code === 'PAYMENT_UNAVAILABLE' || code === 'ORDER_IN_PROGRESS') {
+        keepAttemptForRetry(attempt);
+      } else {
+        resetCheckoutAttempt();
+      }
+      showCheckoutError(
+        errorMessage(payload, 'Could not place the demonstration order.'),
+      );
+      return;
+    }
+
+    if (
+      !payload.data ||
+      typeof payload.data.orderId !== 'string' ||
+      !Number.isInteger(payload.data.totalCents)
+    ) {
+      keepAttemptForRetry(attempt);
+      throw new Error('The order response was incomplete. Retry this order safely.');
+    }
+
+    renderOrderConfirmation(payload.data);
+  } catch (error) {
+    if (attempt && attempt.paymentToken) {
+      keepAttemptForRetry(attempt);
+    } else {
+      resetCheckoutAttempt();
+    }
+    showCheckoutError(
+      error instanceof Error
+        ? error.message
+        : 'The order request was interrupted. Retry this order safely.',
+    );
+  } finally {
+    setCheckoutPending(false);
+  }
+}
+
 async function loadProducts(revision) {
   showStatus('Loading products…');
   elements.catalogError.classList.add('hidden');
@@ -203,6 +476,9 @@ async function loadProducts(revision) {
 }
 
 async function handleUnauthorized() {
+  checkoutPending = false;
+  checkoutReady = false;
+  resetCheckoutAttempt();
   clearCart();
   replaceHash('login');
   renderLogin();
@@ -244,7 +520,7 @@ async function renderProtectedRoute(route, revision) {
     if (route === 'dashboard') {
       await loadProducts(revision);
     } else {
-      showStatus('');
+      await renderCheckout(revision);
     }
   } catch (error) {
     if (revision !== navigationRevision) {
@@ -333,6 +609,20 @@ elements.logout.addEventListener('click', async () => {
     renderLogin();
   }
 });
+
+elements.checkoutForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void submitCheckout();
+});
+
+for (const outcome of elements.paymentOutcomes) {
+  outcome.addEventListener('change', () => {
+    if (!checkoutPending) {
+      resetCheckoutAttempt();
+      elements.checkoutError.classList.add('hidden');
+    }
+  });
+}
 
 window.addEventListener('hashchange', () => {
   void renderRoute();
