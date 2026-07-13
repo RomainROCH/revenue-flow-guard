@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "AUTH_BYPASS",
+      "testId": "tests/api/catalog.spec.ts › GET /api/products requires a known session and leaks no catalogue data",
+      "expectedSignature": "RFG:AUTH_BYPASS:AUTH_REQUIRED"
+    },
+    {
+      "id": "CLIENT_PRICE_TRUST",
+      "testId": "tests/api/orders.spec.ts › POST /api/orders enforces exact top-level and item fields and forbids client prices or totals",
+      "expectedSignature": "RFG:CLIENT_PRICE_TRUST:CLIENT_AMOUNT_FORBIDDEN"
+    },
+    {
+      "id": "DUPLICATE_ORDER",
+      "testId": "tests/api/orders.spec.ts › a successful order uses canonical item order, server totals, an opaque id, and replays exactly once",
+      "expectedSignature": "RFG:DUPLICATE_ORDER:IDEMPOTENT_REPLAY"
+    },
+    {
+      "id": "EMPTY_CART_ACCEPTED",
+      "testId": "tests/api/orders.spec.ts › POST /api/orders maps empty, duplicate, unknown, and invalid-quantity items to INVALID_ITEMS without stock changes",
+      "expectedSignature": "RFG:EMPTY_CART_ACCEPTED:EMPTY_CART_REJECTED"
+    },
+    {
+      "id": "PAYMENT_DECLINE_HIDDEN",
+      "testId": "tests/ui/checkout.spec.ts › safe demonstration checkout › shows a declined-payment message, preserves the cart, and uses a new key for a new attempt",
+      "expectedSignature": "RFG:PAYMENT_DECLINE_HIDDEN:DECLINE_VISIBLE"
+    },
+    {
+      "id": "SUBMIT_CONTROL_MISSING",
+      "testId": "tests/ui/checkout.spec.ts › safe demonstration checkout › disables every submission path while the first order is pending",
+      "expectedSignature": "RFG:SUBMIT_CONTROL_MISSING:SUBMIT_DISABLED"
+    }
+  ]
+}

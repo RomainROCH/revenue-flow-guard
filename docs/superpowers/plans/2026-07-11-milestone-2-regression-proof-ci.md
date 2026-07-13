@@ -133,10 +133,12 @@ git commit -m "test: seed six isolated revenue regressions"
 Require schema 1, exactly six enum IDs, unique signatures and test IDs, existing files, exact signature occurrence, and this canonical ID grammar:
 
 ```text
-<POSIX repo-relative test file> › <describe title> › <test title>
+<POSIX repo-relative test file> › [<describe title> › ...] <test title>
 ```
 
-Titles are trimmed exactly as Playwright reports them; the separator is space/U+203A/space.
+The file and test title are required; zero or more describe titles may appear
+between them, matching Playwright's actual suite nesting. Titles are trimmed
+exactly as Playwright reports them; the separator is space/U+203A/space.
 
 - [ ] **Step 2: Verify red**
 
