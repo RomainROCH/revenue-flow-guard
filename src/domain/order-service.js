@@ -76,6 +76,7 @@ function createOrderService({
   paymentService,
   randomBytes,
   orderBarrier = { async afterPending() {} },
+  faultDecision = { is: () => false },
 }) {
   function cacheFailure(key, pending, error) {
     const completed = {
@@ -99,8 +100,40 @@ function createOrderService({
     };
   }
 
+  function duplicateCompletedOrder(record) {
+    const original = record.result.data;
+    const orderId = `ord_${randomBytes(32).toString('base64url')}`;
+    const data = {
+      orderId,
+      totalCents: original.totalCents,
+      items: cloneItems(original.items),
+      replayed: false,
+    };
+
+    for (const item of original.items) {
+      store.stock.set(item.productId, store.stock.get(item.productId) - item.quantity);
+    }
+    store.orders.set(orderId, {
+      id: orderId,
+      totalCents: data.totalCents,
+      items: cloneItems(data.items),
+    });
+
+    return { kind: 'success', status: 201, data };
+  }
+
   async function submit({ idempotencyKey, body }) {
-    const canonical = canonicalizeOrder(idempotencyKey, body);
+    const trustsClientTotal =
+      faultDecision.is('CLIENT_PRICE_TRUST') &&
+      body &&
+      typeof body === 'object' &&
+      !Array.isArray(body) &&
+      Number.isInteger(body.totalCents);
+    const canonicalBody = trustsClientTotal ? { ...body } : body;
+    if (trustsClientTotal) {
+      delete canonicalBody.totalCents;
+    }
+    const canonical = canonicalizeOrder(idempotencyKey, canonicalBody);
     if (canonical.kind === 'invalid') {
       return failure(ORDER_ERRORS[canonical.code]);
     }
@@ -113,6 +146,13 @@ function createOrderService({
 
       if (existing.state === 'pending') {
         return failure(ORDER_ERRORS.ORDER_IN_PROGRESS, { 'Retry-After': '1' });
+      }
+
+      if (
+        faultDecision.is('DUPLICATE_ORDER') &&
+        existing.result.kind === 'success'
+      ) {
+        return duplicateCompletedOrder(existing);
       }
 
       return replay(existing);
@@ -137,7 +177,10 @@ function createOrderService({
       throw error;
     }
 
-    if (canonical.items.length === 0) {
+    if (
+      canonical.items.length === 0 &&
+      !faultDecision.is('EMPTY_CART_ACCEPTED')
+    ) {
       return cacheFailure(canonical.key, pending, ORDER_ERRORS.INVALID_ITEMS);
     }
 
@@ -160,6 +203,10 @@ function createOrderService({
       }
 
       totalCents += product.priceCents * item.quantity;
+    }
+
+    if (trustsClientTotal) {
+      totalCents = body.totalCents;
     }
 
     const payment = paymentService.inspect(canonical.paymentToken);

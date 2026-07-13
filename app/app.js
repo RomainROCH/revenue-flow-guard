@@ -2,6 +2,7 @@
 
 const CART_STORAGE_KEY = 'rfg-cart';
 const PROTECTED_ROUTES = new Set(['dashboard', 'checkout']);
+const ACTIVE_FAULT = document.documentElement.dataset.rfgFault || 'NONE';
 
 const elements = {
   nav: document.getElementById('nav'),
@@ -231,8 +232,10 @@ function renderCheckoutSummary(items) {
 function setCheckoutPending(pending) {
   checkoutPending = pending;
   const controlsDisabled = pending || !checkoutReady;
+  const leavesSubmitEnabled =
+    pending && ACTIVE_FAULT === 'SUBMIT_CONTROL_MISSING';
 
-  elements.checkoutSubmit.disabled = controlsDisabled;
+  elements.checkoutSubmit.disabled = controlsDisabled && !leavesSubmitEnabled;
   for (const outcome of elements.paymentOutcomes) {
     outcome.disabled = controlsDisabled;
   }
@@ -352,6 +355,16 @@ function renderOrderConfirmation(order) {
   resetCheckoutAttempt();
 }
 
+function renderSyntheticDeclineConfirmation() {
+  elements.confirmationTotal.textContent = elements.checkoutTotal.textContent;
+  elements.orderId.textContent = 'ord_demo_decline_hidden';
+  elements.checkoutContent.classList.add('hidden');
+  elements.orderConfirmation.classList.remove('hidden');
+  clearCart();
+  checkoutReady = false;
+  resetCheckoutAttempt();
+}
+
 function keepAttemptForRetry(attempt) {
   retryableAttempt = attempt;
   elements.checkoutSubmit.textContent = 'Retry order';
@@ -402,6 +415,13 @@ async function submitCheckout() {
 
     if (!response.ok) {
       const code = payload && payload.error ? payload.error.code : null;
+      if (
+        code === 'PAYMENT_DECLINED' &&
+        ACTIVE_FAULT === 'PAYMENT_DECLINE_HIDDEN'
+      ) {
+        renderSyntheticDeclineConfirmation();
+        return;
+      }
       if (code === 'PAYMENT_UNAVAILABLE' || code === 'ORDER_IN_PROGRESS') {
         keepAttemptForRetry(attempt);
       } else {

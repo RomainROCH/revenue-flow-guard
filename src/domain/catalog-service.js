@@ -1,6 +1,10 @@
 'use strict';
 
-function createCatalogService({ store }) {
+function createCatalogService({ store, faultDecision = { is: () => false } }) {
+  function requiresSession() {
+    return !faultDecision.is('AUTH_BYPASS');
+  }
+
   function listProducts() {
     return store.products.map((product) => ({
       ...product,
@@ -8,7 +12,7 @@ function createCatalogService({ store }) {
     }));
   }
 
-  return { listProducts };
+  return { listProducts, requiresSession };
 }
 
 module.exports = {

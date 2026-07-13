@@ -57,7 +57,7 @@ test('GET /api/products requires a known session and leaks no catalogue data', a
       headers ? { headers } : {},
     );
 
-    expect(response.status()).toBe(401);
+    expect(response.status(), 'RFG:AUTH_BYPASS:AUTH_REQUIRED').toBe(401);
     expect(await response.json()).toEqual(AUTH_REQUIRED);
 
     const body = await response.text();

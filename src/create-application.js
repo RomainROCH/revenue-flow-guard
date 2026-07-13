@@ -1,8 +1,6 @@
 'use strict';
 
-const fs = require('fs/promises');
 const http = require('http');
-const path = require('path');
 const crypto = require('crypto');
 const { createCatalogService } = require('./domain/catalog-service');
 const { createOrderService } = require('./domain/order-service');
@@ -21,20 +19,9 @@ const { ERROR_DEFINITIONS, HttpError } = require('./http/errors');
 const { parseJsonBody } = require('./http/json');
 const { sendData, sendError } = require('./http/responses');
 const { createRouter } = require('./http/router');
+const { createStaticAssetServer } = require('./http/static-assets');
 const { createFaultDecision } = require('./testing/faults');
 const { createTestControls } = require('./testing/test-controls');
-
-const STATIC_FILES = Object.freeze({
-  '/': Object.freeze({ file: 'index.html', type: 'text/html; charset=utf-8' }),
-  '/app.js': Object.freeze({
-    file: 'app.js',
-    type: 'application/javascript; charset=utf-8',
-  }),
-  '/style.css': Object.freeze({
-    file: 'style.css',
-    type: 'text/css; charset=utf-8',
-  }),
-});
 
 const JSON_BODY_BOUNDARIES = new Set([
   'POST /api/session',
@@ -64,25 +51,6 @@ function requiresJsonBody(request, pathname) {
   return JSON_BODY_BOUNDARIES.has(`${request.method} ${pathname}`);
 }
 
-async function serveStatic(response, pathname) {
-  const staticFile = STATIC_FILES[pathname];
-
-  if (!staticFile) {
-    return false;
-  }
-
-  const content = await fs.readFile(
-    path.resolve(__dirname, '..', 'app', staticFile.file),
-  );
-  response.writeHead(200, {
-    'Content-Length': content.length,
-    'Content-Type': staticFile.type,
-    'X-Content-Type-Options': 'nosniff',
-  });
-  response.end(content);
-  return true;
-}
-
 function createApplication({
   store,
   clock,
@@ -110,13 +78,20 @@ function createApplication({
     faultDecision: activeFaultDecision,
     notFoundDefinition: ERROR_DEFINITIONS.NOT_FOUND,
   });
+  const staticAssets = createStaticAssetServer({
+    faultDecision: activeFaultDecision,
+    testMode,
+  });
   const sessions = createSessionService({
     store: applicationStore,
     randomBytes: generateRandomBytes,
     clock: applicationClock,
     sessionBarrier,
   });
-  const catalog = createCatalogService({ store: applicationStore });
+  const catalog = createCatalogService({
+    store: applicationStore,
+    faultDecision: activeFaultDecision,
+  });
   const payments = createPaymentService({
     store: applicationStore,
     randomBytes: generateRandomBytes,
@@ -127,6 +102,7 @@ function createApplication({
     paymentService: payments,
     randomBytes: generateRandomBytes,
     orderBarrier,
+    faultDecision: activeFaultDecision,
   });
 
   const router = createRouter([
@@ -246,7 +222,10 @@ function createApplication({
       method: 'GET',
       path: '/api/products',
       handler: async (request, response) => {
-        if (!sessions.get(readSessionCookie(request))) {
+        if (
+          catalog.requiresSession() &&
+          !sessions.get(readSessionCookie(request))
+        ) {
           sendError(response, API_ERRORS.AUTH_REQUIRED);
           return;
         }
@@ -272,7 +251,10 @@ function createApplication({
         return;
       }
 
-      if (request.method === 'GET' && (await serveStatic(response, url.pathname))) {
+      if (
+        request.method === 'GET' &&
+        (await staticAssets.serve(response, url.pathname))
+      ) {
         return;
       }
 

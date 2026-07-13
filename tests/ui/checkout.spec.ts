@@ -105,7 +105,10 @@ test.describe('safe demonstration checkout', () => {
       .getByRole('button', { name: 'Place order' })
       .click();
 
-    await expect(authenticatedPage.getByRole('alert')).toHaveText(
+    await expect(
+      authenticatedPage.getByRole('alert'),
+      'RFG:PAYMENT_DECLINE_HIDDEN:DECLINE_VISIBLE',
+    ).toHaveText(
       'The demonstration payment was declined.',
     );
     await expect(authenticatedPage.getByTestId('cart-count')).toHaveText('1');

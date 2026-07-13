@@ -28,8 +28,12 @@ function errorEnvelope(code: ErrorCode) {
   return { data: null, error: { code, message: errors[code][0] } };
 }
 
-async function expectError(response: Awaited<ReturnType<APIRequestContext['post']>>, code: ErrorCode) {
-  expect(response.status()).toBe(errors[code][1]);
+async function expectError(
+  response: Awaited<ReturnType<APIRequestContext['post']>>,
+  code: ErrorCode,
+  message?: string,
+) {
+  expect(response.status(), message).toBe(errors[code][1]);
   expect(await response.json()).toEqual(errorEnvelope(code));
 }
 
@@ -218,6 +222,7 @@ test('POST /api/orders enforces exact top-level and item fields and forbids clie
     await expectError(
       await submit(request, isolatedApp.baseURL, `client-amount-${index}`, data),
       'CLIENT_AMOUNT_FORBIDDEN',
+      index === 0 ? 'RFG:CLIENT_PRICE_TRUST:CLIENT_AMOUNT_FORBIDDEN' : undefined,
     );
   }
 });
@@ -246,7 +251,11 @@ test('POST /api/orders maps empty, duplicate, unknown, and invalid-quantity item
       items,
       paymentToken,
     });
-    await expectError(response, 'INVALID_ITEMS');
+    await expectError(
+      response,
+      'INVALID_ITEMS',
+      index === 0 ? 'RFG:EMPTY_CART_ACCEPTED:EMPTY_CART_REJECTED' : undefined,
+    );
     expect(await stock(request, isolatedApp.baseURL)).toEqual(baseline);
   }
 });
@@ -295,7 +304,7 @@ test('a successful order uses canonical item order, server totals, an opaque id,
     key,
     { paymentToken, items: [{ quantity: 2, productId: 1 }, { quantity: 1, productId: 3 }] },
   );
-  expect(replay.status()).toBe(200);
+  expect(replay.status(), 'RFG:DUPLICATE_ORDER:IDEMPOTENT_REPLAY').toBe(200);
   expect(await replay.json()).toEqual({
     data: { ...firstBody.data, replayed: true },
     error: null,
