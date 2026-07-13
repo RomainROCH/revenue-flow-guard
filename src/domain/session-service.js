@@ -38,7 +38,7 @@ function normalizeCredentials(body) {
   return { username, password };
 }
 
-function createSessionService({ store, randomBytes, clock }) {
+function createSessionService({ store, randomBytes, clock, sessionBarrier }) {
   function getCurrentTime() {
     const now = clock();
 
@@ -106,13 +106,23 @@ function createSessionService({ store, randomBytes, clock }) {
     return { ...session.profile };
   }
 
+  async function getForResponse(sessionId) {
+    const user = get(sessionId);
+
+    if (sessionBarrier) {
+      await sessionBarrier.beforeResponse();
+    }
+
+    return user;
+  }
+
   function remove(sessionId) {
     if (sessionId) {
       store.sessions.delete(sessionId);
     }
   }
 
-  return { create, get, remove };
+  return { create, get, getForResponse, remove };
 }
 
 module.exports = {

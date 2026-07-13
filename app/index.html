@@ -3,62 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Demo Shop</title>
+  <title>Revenue Flow Guard Store</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <nav id="nav" class="hidden">
+  <nav id="nav" class="hidden" aria-label="Store navigation">
     <div class="nav-inner">
-      <a href="/#dashboard" id="nav-logo">Demo Shop</a>
+      <a href="/#dashboard" id="nav-logo">Revenue Flow Guard</a>
       <div class="nav-right">
-        <span id="cart-badge" class="cart-badge hidden">0</span>
-        <a href="/#checkout" id="nav-cart">Cart</a>
-        <button id="logout-btn" class="btn-link">Logout</button>
+        <a href="/#checkout" id="nav-cart">
+          Cart
+          <span
+            id="cart-count"
+            class="cart-badge hidden"
+            data-testid="cart-count"
+            aria-label="Items in cart"
+          >0</span>
+        </a>
+        <button id="logout-btn" class="btn-link" type="button">Logout</button>
       </div>
     </div>
   </nav>
 
   <main>
+    <p id="app-status" class="status hidden" role="status" aria-live="polite"></p>
+
     <section id="page-login">
       <div class="card login-card">
+        <p class="eyebrow">Protected SaaS storefront</p>
         <h1>Sign In</h1>
-        <p class="text-muted">Demo credentials: <code>demo</code> / <code>demo</code></p>
+        <p class="text-muted">
+          Use the demonstration credentials <code>demo</code> / <code>demo</code>.
+        </p>
         <form id="login-form">
           <label for="username">Username</label>
-          <input type="text" id="username" name="username" autocomplete="username" required>
+          <input
+            type="text"
+            id="username"
+            name="username"
+            autocomplete="username"
+            required
+          >
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" autocomplete="current-password" required>
-          <p id="login-error" class="error hidden" role="alert">Invalid credentials</p>
-          <button type="submit" class="btn-primary">Sign in</button>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            autocomplete="current-password"
+            required
+          >
+          <p id="login-error" class="error hidden" role="alert"></p>
+          <button id="login-submit" type="submit" class="btn-primary">Sign in</button>
         </form>
       </div>
     </section>
 
-    <section id="page-dashboard" class="hidden">
-      <h1>Products</h1>
-      <div id="product-list" class="product-grid"></div>
+    <section id="page-dashboard" class="hidden" aria-labelledby="products-heading">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">Authenticated catalog</p>
+          <h1 id="products-heading">Products</h1>
+        </div>
+        <p class="text-muted">Prices and availability come from the server.</p>
+      </div>
+      <ul id="product-list" class="product-grid" aria-label="Products"></ul>
+      <p id="catalog-error" class="error hidden" role="alert"></p>
     </section>
 
-    <section id="page-checkout" class="hidden">
-      <h1>Checkout</h1>
-      <div class="checkout-layout">
-        <form id="checkout-form" novalidate>
-          <label for="order-name">Full Name</label>
-          <input type="text" id="order-name" name="name" required>
-          <label for="order-address">Address</label>
-          <input type="text" id="order-address" name="address" required>
-          <label for="order-card">Card Number</label>
-          <input type="text" id="order-card" name="card" pattern="[0-9]{16}" placeholder="1234567890123456" required>
-          <p id="checkout-error" class="error hidden" role="alert"></p>
-          <button type="submit" class="btn-primary">Place Order</button>
-        </form>
-        <div id="order-confirmation" class="hidden">
-          <div class="confirmation-card">
-            <h2>Order Confirmed!</h2>
-            <p>Your order number is: <strong id="order-id"></strong></p>
-            <a href="/#dashboard" class="btn-primary">Continue Shopping</a>
-          </div>
-        </div>
+    <section id="page-checkout" class="hidden" aria-labelledby="checkout-heading">
+      <div class="card checkout-placeholder">
+        <p class="eyebrow">Protected checkout</p>
+        <h1 id="checkout-heading">Checkout</h1>
+        <p>
+          Your cart is ready. Secure demonstration payment outcomes are added in
+          the next flow milestone; this screen never accepts real card data.
+        </p>
+        <a class="btn-secondary" href="/#dashboard">Continue shopping</a>
       </div>
     </section>
   </main>

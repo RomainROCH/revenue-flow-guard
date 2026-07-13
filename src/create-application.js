@@ -81,7 +81,14 @@ async function serveStatic(response, pathname) {
   return true;
 }
 
-function createApplication({ store, clock, randomBytes, runtime, orderBarrier } = {}) {
+function createApplication({
+  store,
+  clock,
+  randomBytes,
+  runtime,
+  orderBarrier,
+  sessionBarrier,
+} = {}) {
   const applicationStore = store ?? createStore();
   const generateRandomBytes = randomBytes ?? crypto.randomBytes;
   const applicationClock = clock ?? Date.now;
@@ -92,6 +99,7 @@ function createApplication({ store, clock, randomBytes, runtime, orderBarrier } 
     store: applicationStore,
     randomBytes: generateRandomBytes,
     clock: applicationClock,
+    sessionBarrier,
   });
   const catalog = createCatalogService({ store: applicationStore });
   const payments = createPaymentService({
@@ -145,7 +153,7 @@ function createApplication({ store, clock, randomBytes, runtime, orderBarrier } 
       method: 'GET',
       path: '/api/session',
       handler: async (request, response) => {
-        const user = sessions.get(readSessionCookie(request));
+        const user = await sessions.getForResponse(readSessionCookie(request));
 
         if (!user) {
           sendError(response, API_ERRORS.AUTH_REQUIRED);
