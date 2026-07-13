@@ -324,7 +324,7 @@ Expected: all commands PASS, zero warnings, zero retries.
 
 - [ ] **Step 4: Verify production control absence through the contract test**
 
-Run: `npm run test:api -- http-contracts.spec.ts -g "does not expose test controls"`
+Run: `npx playwright test tests/api/http-contracts.spec.ts --project=chromium --retries=0 -g "hides .+ /__test/"`
 
 Expected: PASS for `/__test/reset`, `/__test/fault`, and `/__test/state`, each asserting the exact generic 404 envelope defined in Task 2.
 
