@@ -5,6 +5,11 @@ const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
 const { createCatalogService } = require('./domain/catalog-service');
+const { createOrderService } = require('./domain/order-service');
+const {
+  SERVICE_CAPACITY_REACHED,
+  createPaymentService,
+} = require('./domain/payment-service');
 const { createSessionService } = require('./domain/session-service');
 const { createStore } = require('./domain/store');
 const {
@@ -29,7 +34,11 @@ const STATIC_FILES = Object.freeze({
   }),
 });
 
-const JSON_BODY_BOUNDARIES = new Set(['POST /api/session']);
+const JSON_BODY_BOUNDARIES = new Set([
+  'POST /api/session',
+  'POST /api/payment-tokens',
+  'POST /api/orders',
+]);
 
 const API_ERRORS = Object.freeze({
   AUTH_REQUIRED: Object.freeze({
@@ -72,7 +81,7 @@ async function serveStatic(response, pathname) {
   return true;
 }
 
-function createApplication({ store, clock, randomBytes, runtime } = {}) {
+function createApplication({ store, clock, randomBytes, runtime, orderBarrier } = {}) {
   const applicationStore = store ?? createStore();
   const generateRandomBytes = randomBytes ?? crypto.randomBytes;
   const applicationClock = clock ?? Date.now;
@@ -85,6 +94,17 @@ function createApplication({ store, clock, randomBytes, runtime } = {}) {
     clock: applicationClock,
   });
   const catalog = createCatalogService({ store: applicationStore });
+  const payments = createPaymentService({
+    store: applicationStore,
+    randomBytes: generateRandomBytes,
+    clock: applicationClock,
+  });
+  const orders = createOrderService({
+    store: applicationStore,
+    paymentService: payments,
+    randomBytes: generateRandomBytes,
+    orderBarrier,
+  });
 
   const router = createRouter([
     {
@@ -144,6 +164,58 @@ function createApplication({ store, clock, randomBytes, runtime } = {}) {
           'Set-Cookie': serializeClearedSessionCookie(applicationRuntime),
         });
         response.end();
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/payment-tokens',
+      handler: async (request, response) => {
+        const session = sessions.get(readSessionCookie(request));
+        if (!session) {
+          sendError(response, API_ERRORS.AUTH_REQUIRED);
+          return;
+        }
+
+        const result = payments.create(request.body);
+        if (result.kind === 'invalid-input') {
+          sendError(response, API_ERRORS.INVALID_INPUT);
+          return;
+        }
+
+        if (result.kind === 'capacity') {
+          sendError(response, SERVICE_CAPACITY_REACHED);
+          return;
+        }
+
+        sendData(response, 201, result.data);
+      },
+    },
+    {
+      method: 'POST',
+      path: '/api/orders',
+      handler: async (request, response) => {
+        const session = sessions.get(readSessionCookie(request));
+        if (!session) {
+          sendError(response, API_ERRORS.AUTH_REQUIRED);
+          return;
+        }
+
+        const result = await orders.submit({
+          idempotencyKey: request.headers['idempotency-key'],
+          body: request.body,
+        });
+        if (result.headers) {
+          for (const [name, value] of Object.entries(result.headers)) {
+            response.setHeader(name, value);
+          }
+        }
+
+        if (result.kind === 'error') {
+          sendError(response, result.error);
+          return;
+        }
+
+        sendData(response, result.status, result.data);
       },
     },
     {
