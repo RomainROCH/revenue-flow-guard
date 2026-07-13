@@ -33,7 +33,7 @@ Using `isolatedApp({ testMode, testToken })`, cover exact reset/fault/state shap
 
 - [ ] **Step 2: Verify red**
 
-Run: `npm run test:api -- test-controls.spec.ts`
+Run: `npx playwright test tests/api/test-controls.spec.ts --project=chromium --retries=0`
 
 Expected: FAIL at `PUT /__test/fault` with 404 instead of the expected 200 in authorized test mode.
 
@@ -47,7 +47,7 @@ Reset sessions, tokens, orders, idempotency, request counters, stock, and fault.
 
 - [ ] **Step 5: Verify green and commit**
 
-Run: `npm run test:api -- test-controls.spec.ts`
+Run: `npx playwright test tests/api/test-controls.spec.ts --project=chromium --retries=0`
 
 Expected: PASS.
 

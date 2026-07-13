@@ -21,7 +21,16 @@ function configuredPort(value) {
 
 const host = process.env.HOST || DEFAULT_HOST;
 const port = configuredPort(process.env.PORT);
-const server = createApplication();
+const testMode = process.env.DEMO_TEST_MODE === '1';
+const server = createApplication({
+  host,
+  testMode,
+  testToken: process.env.DEMO_TEST_TOKEN,
+  runtime: {
+    publicBaseUrl:
+      process.env.PUBLIC_BASE_URL || `http://${host}:${port}`,
+  },
+});
 
 server.listen(port, host, () => {
   console.log(`Server running at http://${host}:${port}/`);

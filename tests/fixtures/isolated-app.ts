@@ -10,6 +10,9 @@ type ApplicationModule = {
     clock?: () => number;
     orderBarrier?: { afterPending: () => Promise<void> };
     sessionBarrier?: { beforeResponse: () => Promise<void> };
+    testMode?: boolean;
+    testToken?: string;
+    host?: string;
   }) => Server;
 };
 
@@ -26,6 +29,9 @@ const loadCreateApplication = (): ((options?: {
   clock?: () => number;
   orderBarrier?: { afterPending: () => Promise<void> };
   sessionBarrier?: { beforeResponse: () => Promise<void> };
+  testMode?: boolean;
+  testToken?: string;
+  host?: string;
 }) => Server) => {
   const applicationPath = resolve(
     process.cwd(),
@@ -46,10 +52,10 @@ const loadCreateApplication = (): ((options?: {
   return applicationModule.createApplication;
 };
 
-const listen = async (server: Server): Promise<void> => {
+const listen = async (server: Server, host = '127.0.0.1'): Promise<void> => {
   await new Promise<void>((resolveListen, rejectListen) => {
     server.once('error', rejectListen);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, host, () => {
       server.off('error', rejectListen);
       resolveListen();
     });
@@ -73,8 +79,18 @@ const close = async (server: Server): Promise<void> => {
   });
 };
 
-export const test = base.extend<{ isolatedApp: IsolatedApp }>({
-  isolatedApp: async ({}, use) => {
+export type ApplicationOptions = {
+  testMode?: boolean;
+  testToken?: string;
+  host?: string;
+};
+
+export const test = base.extend<{
+  isolatedApp: IsolatedApp;
+  applicationOptions: ApplicationOptions;
+}>({
+  applicationOptions: [{}, { option: true }],
+  isolatedApp: async ({ applicationOptions }, use) => {
     const createApplication = loadCreateApplication();
     let now = 0;
     const orderBarrier = createBarrierController('order barrier');
@@ -82,6 +98,7 @@ export const test = base.extend<{ isolatedApp: IsolatedApp }>({
       'session response barrier',
     );
     const server = createApplication({
+      ...applicationOptions,
       clock: () => now,
       orderBarrier: {
         async afterPending() {
@@ -96,7 +113,7 @@ export const test = base.extend<{ isolatedApp: IsolatedApp }>({
     });
 
     try {
-      await listen(server);
+      await listen(server, applicationOptions.host ?? '127.0.0.1');
       const address = server.address() as AddressInfo;
 
       await use({

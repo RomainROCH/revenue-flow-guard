@@ -21,6 +21,8 @@ const { ERROR_DEFINITIONS, HttpError } = require('./http/errors');
 const { parseJsonBody } = require('./http/json');
 const { sendData, sendError } = require('./http/responses');
 const { createRouter } = require('./http/router');
+const { createFaultDecision } = require('./testing/faults');
+const { createTestControls } = require('./testing/test-controls');
 
 const STATIC_FILES = Object.freeze({
   '/': Object.freeze({ file: 'index.html', type: 'text/html; charset=utf-8' }),
@@ -88,6 +90,10 @@ function createApplication({
   runtime,
   orderBarrier,
   sessionBarrier,
+  testMode = false,
+  testToken,
+  host = '127.0.0.1',
+  faultDecision,
 } = {}) {
   const applicationStore = store ?? createStore();
   const generateRandomBytes = randomBytes ?? crypto.randomBytes;
@@ -95,6 +101,15 @@ function createApplication({
   const applicationRuntime = runtime ?? {
     publicBaseUrl: 'http://localhost',
   };
+  const activeFaultDecision = faultDecision ?? createFaultDecision();
+  const testControls = createTestControls({
+    enabled: testMode,
+    token: testToken,
+    host,
+    store: applicationStore,
+    faultDecision: activeFaultDecision,
+    notFoundDefinition: ERROR_DEFINITIONS.NOT_FOUND,
+  });
   const sessions = createSessionService({
     store: applicationStore,
     randomBytes: generateRandomBytes,
@@ -122,7 +137,7 @@ function createApplication({
         sendData(response, 200, {
           status: 'ok',
           version: 1,
-          testMode: false,
+          testMode: testControls.enabled,
         });
       },
     },
@@ -202,6 +217,7 @@ function createApplication({
       method: 'POST',
       path: '/api/orders',
       handler: async (request, response) => {
+        testControls.recordOrderRequest();
         const session = sessions.get(readSessionCookie(request));
         if (!session) {
           sendError(response, API_ERRORS.AUTH_REQUIRED);
@@ -243,6 +259,10 @@ function createApplication({
   const handleRequest = async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://localhost');
+
+      if (await testControls.handleRequest(request, response, url.pathname)) {
+        return;
+      }
 
       if (requiresJsonBody(request, url.pathname)) {
         request.body = await parseJsonBody(request);
