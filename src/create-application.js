@@ -105,6 +105,9 @@ function createApplication({
     faultDecision: activeFaultDecision,
     testMode,
     publicConfig,
+    sourceCommitSha: publicEvidence.available
+      ? publicEvidence.evidence.source.commitSha
+      : null,
   });
   const sessions = createSessionService({
     store: applicationStore,

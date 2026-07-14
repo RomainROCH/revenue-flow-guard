@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Revenue Flow Guard case study">
+    <title>Revenue Flow Guard case study</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/case-study.js" defer></script>
+  </head>
+  <body class="case-study state-{{PUBLICATION_STATUS}}" data-rfg-fault="NONE">
+    <header class="case-header">
+      <nav class="case-nav" aria-label="Primary navigation">
+        <span class="case-brand">Revenue Flow Guard</span>
+        <a href="/">View the interactive demo</a>
+      </nav>
+    </header>
+
+    <main id="main-content" class="case-main" data-source-commit="{{SOURCE_COMMIT_SHA}}">
+      <section class="case-hero" aria-labelledby="case-study-title">
+        <p class="case-kicker">Revenue Flow Guard</p>
+        <h1 id="case-study-title">Protect the flow that pays you</h1>
+        <p class="offer-name">{{PUBLIC_OFFER_NAME}}</p>
+        <p class="case-summary">{{PUBLIC_OFFER_SUMMARY}}</p>
+        <div class="proof-strip" aria-label="Case study proof points">
+          <span>One critical journey</span>
+          <span>Six controlled regressions</span>
+          <span>Commit-bound evidence</span>
+        </div>
+      </section>
+
+      <section class="case-section" aria-labelledby="risks-title">
+        <p class="section-kicker">Control surface</p>
+        <h2 id="risks-title">Risks demonstrated</h2>
+        <ul class="risk-grid">
+          <li class="risk-card">
+            <h3>Authentication bypass</h3>
+            <p>A server session remains the authority for access to checkout.</p>
+          </li>
+          <li class="risk-card">
+            <h3>Client-controlled pricing</h3>
+            <p>Server-owned totals prevent submitted client values from setting the charge.</p>
+          </li>
+          <li class="risk-card">
+            <h3>Duplicate orders</h3>
+            <p>Idempotent replay returns a consistent result without creating another order.</p>
+          </li>
+          <li class="risk-card">
+            <h3>Empty-cart submission</h3>
+            <p>An invalid cart is rejected before state changes occur.</p>
+          </li>
+          <li class="risk-card">
+            <h3>Hidden payment decline</h3>
+            <p>A fake decline stays visible while the cart remains preserved.</p>
+          </li>
+          <li class="risk-card">
+            <h3>Missing pending-state control</h3>
+            <p>The pending submission stays locked until the request resolves.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section class="case-section" aria-labelledby="protection-title">
+        <p class="section-kicker">Release control</p>
+        <h2 id="protection-title">How protection works</h2>
+        <ol class="architecture-flow">
+          <li><strong>browser/API tests</strong><span>Exercise the commercial journey at both boundaries.</span></li>
+          <li><strong>isolated state</strong><span>Keeps each scenario independent and repeatable.</span></li>
+          <li><strong>idempotent checkout</strong><span>Keeps repeated requests consistent.</span></li>
+          <li><strong>regression profiles</strong><span>Turn controlled faults into explicit checks.</span></li>
+          <li><strong>commit-bound CI evidence</strong><span>Connects the recorded result to its source revision.</span></li>
+        </ol>
+      </section>
+
+      <section class="case-section" aria-labelledby="delivery-title">
+        <p class="section-kicker">Working sequence</p>
+        <h2 id="delivery-title">Delivery method</h2>
+        <ol class="delivery-flow">
+          <li><strong>discovery</strong><span>Trace the journey and its existing controls.</span></li>
+          <li><strong>risk map</strong><span>Connect failure modes to focused checks.</span></li>
+          <li><strong>implementation/repair</strong><span>Add the checks and repair the demonstrated gaps.</span></li>
+          <li><strong>CI evidence</strong><span>Record results against the tested commit.</span></li>
+          <li><strong>handoff</strong><span>Transfer the suite, evidence, and operating context.</span></li>
+        </ol>
+      </section>
+
+      <section class="case-section" aria-labelledby="deliverables-title">
+        <p class="section-kicker">Sprint output</p>
+        <h2 id="deliverables-title">What the sprint delivers</h2>
+        <div class="deliverable-grid">
+          <article><h3>Risk map and test plan</h3><p>A shared view of the journey, risks, and intended checks.</p></article>
+          <article><h3>Maintainable test suite</h3><p>Focused scenarios for the demonstrated revenue flow.</p></article>
+          <article><h3>CI gate</h3><p>A repeatable release check for the protected journey.</p></article>
+          <article><h3>Sanitized evidence</h3><p>Results that exclude real customer and production data.</p></article>
+          <article><h3>Handoff</h3><p>Context for operating and extending the delivered controls.</p></article>
+        </div>
+      </section>
+
+      <section class="case-section" aria-labelledby="evidence-title">
+        <p class="section-kicker">Current signal</p>
+        <h2 id="evidence-title">Live evidence</h2>
+        <div class="evidence-panel" data-testid="live-evidence" aria-live="polite">
+          <p>Live evidence requires JavaScript; no result is shown in this static view.</p>
+        </div>
+      </section>
+
+      <section class="case-section" aria-labelledby="limitations-title">
+        <p class="section-kicker">Evidence boundary</p>
+        <h2 id="limitations-title">What this demo does not prove</h2>
+        <div class="limitations-panel">
+          <p>This demonstration uses synthetic controlled faults and no real customer or production data.</p>
+          <p>It is not a measurement of business outcomes.</p>
+        </div>
+      </section>
+
+      <section class="case-section case-cta" aria-labelledby="contact-title">
+        <p class="section-kicker">{{PUBLIC_OFFER_NAME}}</p>
+        <h2 id="contact-title">Start a conversation</h2>
+        <p>{{PUBLIC_OFFER_SUMMARY}}</p>
+        <a href="{{PUBLIC_CONTACT_URL}}">{{PUBLIC_CONTACT_LABEL}}</a>
+      </section>
+    </main>
+
+    <footer class="case-footer">
+      <p>Revenue Flow Guard case study.</p>
+    </footer>
+  </body>
+</html>

@@ -7,6 +7,7 @@ const { isFaultId } = require('../testing/faults');
 
 const APP_ROOT = resolve(__dirname, '../../app');
 const FAULT_ATTRIBUTE = 'data-rfg-fault="NONE"';
+const SOURCE_COMMIT_TOKEN = '{{SOURCE_COMMIT_SHA}}';
 const PUBLIC_TOKENS = Object.freeze({
   status: '{{PUBLICATION_STATUS}}',
   contactUrl: '{{PUBLIC_CONTACT_URL}}',
@@ -26,8 +27,18 @@ const STATIC_ASSETS = Object.freeze({
     contentType: 'text/html; charset=utf-8',
     html: true,
   }),
+  '/case-study.html': Object.freeze({
+    path: resolve(APP_ROOT, 'case-study.html'),
+    contentType: 'text/html; charset=utf-8',
+    html: true,
+  }),
   '/app.js': Object.freeze({
     path: resolve(APP_ROOT, 'app.js'),
+    contentType: 'application/javascript; charset=utf-8',
+    html: false,
+  }),
+  '/case-study.js': Object.freeze({
+    path: resolve(APP_ROOT, 'case-study.js'),
     contentType: 'application/javascript; charset=utf-8',
     html: false,
   }),
@@ -99,10 +110,23 @@ function transformPublicHtml(source, publicConfig) {
   return transformed;
 }
 
+function transformSourceCommitHtml(source, sourceCommitSha) {
+  if (!source.includes(SOURCE_COMMIT_TOKEN)) {
+    return source;
+  }
+
+  const value = typeof sourceCommitSha === 'string' && /^[0-9a-f]{40}$/i.test(sourceCommitSha)
+    ? sourceCommitSha
+    : 'unavailable';
+
+  return source.replaceAll(SOURCE_COMMIT_TOKEN, escapeHtml(value));
+}
+
 function createStaticAssetServer({
   faultDecision,
   testMode = false,
   publicConfig,
+  sourceCommitSha,
 }) {
   return {
     async serve(response, pathname) {
@@ -116,6 +140,7 @@ function createStaticAssetServer({
 
       if (asset.html) {
         let html = transformPublicHtml(file.toString('utf8'), publicConfig);
+        html = transformSourceCommitHtml(html, sourceCommitSha);
         if (testMode) {
           html = injectFaultId(html, faultDecision);
         }
@@ -133,4 +158,8 @@ function createStaticAssetServer({
   };
 }
 
-module.exports = { createStaticAssetServer, transformPublicHtml };
+module.exports = {
+  createStaticAssetServer,
+  transformPublicHtml,
+  transformSourceCommitHtml,
+};

@@ -14,6 +14,7 @@ type ApplicationModule = {
     testMode?: boolean;
     testToken?: string;
     host?: string;
+    environment?: Record<string, string | undefined>;
   }) => Server;
 };
 
@@ -36,6 +37,7 @@ const loadCreateApplication = (): ((options?: {
   testMode?: boolean;
   testToken?: string;
   host?: string;
+  environment?: Record<string, string | undefined>;
 }) => Server) => {
   const applicationPath = resolve(
     process.cwd(),
@@ -87,6 +89,7 @@ export type ApplicationOptions = {
   testMode?: boolean;
   testToken?: string;
   host?: string;
+  environment?: Record<string, string | undefined>;
 };
 
 export const test = base.extend<{
