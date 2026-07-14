@@ -7,3 +7,4 @@ playwright/.auth/
 playwright-report/
 test-results/
 .worktrees/
+.opencode-workers/
