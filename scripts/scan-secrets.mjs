@@ -167,9 +167,13 @@ async function main() {
   process.stdout.write(`Secret scan passed for ${report.scannedFiles} files.\n`);
 }
 
-main().catch(() => {
+main().catch(async () => {
   // Findings may themselves contain credentials. Keep values out of terminal
-  // output and rely on the non-zero exit plus the deliberately absent report.
+  // output and rely on the non-zero exit plus deliberately absent artifacts.
+  await Promise.all([
+    rm(reportPath, { force: true }),
+    rm(publicDirectory, { recursive: true, force: true }),
+  ]).catch(() => {});
   process.stderr.write('Secret scan failed; no validation report was written.\n');
   process.exitCode = 1;
 });

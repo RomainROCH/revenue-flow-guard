@@ -1,34 +1,87 @@
-name: Playwright Tests
+name: Revenue Flow Guard
+
 on:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: [main, master]
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: revenue-flow-guard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    timeout-minutes: 60
+  quality:
+    name: Release confidence proof
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          node-version: lts/*
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
           cache: npm
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package.json') }}
+          cache-dependency-path: package-lock.json
+
       - name: Install dependencies
         run: npm ci
-      - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
-      - name: Run Playwright tests
-        run: npx playwright test
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate workflow policy
+        id: workflow_policy
+        if: ${{ always() }}
+        run: npm run validate:workflows
+
+      - name: Lint
+        id: lint
+        if: ${{ always() }}
+        run: npm run lint
+
+      - name: Typecheck
+        id: typecheck
+        if: ${{ always() }}
+        run: npm run typecheck
+
+      - name: Verify deterministic quality
+        id: quality
+        if: ${{ always() }}
+        run: npm run verify:quality
+
+      - name: Build public evidence
+        if: ${{ always() }}
+        env:
+          RFG_REQUIRED_GATES_PASSED: ${{ steps.workflow_policy.outcome == 'success' && steps.lint.outcome == 'success' && steps.typecheck.outcome == 'success' && steps.quality.outcome == 'success' }}
+        run: npm run build:evidence
+
+      - name: Validate public artifacts
+        if: ${{ always() }}
+        run: npm run validate:public-artifacts
+
+      - name: Scan tracked and public files for secrets
+        if: ${{ always() }}
+        run: npm run scan:secrets
+
+      - name: Upload public evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
+          name: revenue-flow-guard-evidence
+          path: |
+            artifacts/public-evidence
+            artifacts/validation/secret-scan.json
+          if-no-files-found: error
+          retention-days: 14

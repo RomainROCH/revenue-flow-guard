@@ -1,0 +1,40 @@
+name: Revenue Flow Guard cross-browser
+
+on:
+  schedule:
+    - cron: '17 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: revenue-flow-guard-cross-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-browser:
+    name: Weekly browser confidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run cross-browser baseline
+        run: npx playwright test tests/api tests/ui --config=playwright.cross-browser.config.ts --retries=0 --workers=1
