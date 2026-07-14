@@ -20,6 +20,8 @@ const { parseJsonBody } = require('./http/json');
 const { sendData, sendError } = require('./http/responses');
 const { createRouter } = require('./http/router');
 const { createStaticAssetServer } = require('./http/static-assets');
+const { parsePublicConfig } = require('./public/public-config');
+const { parsePublicEvidence } = require('./public/public-evidence');
 const { createFaultDecision } = require('./testing/faults');
 const { createTestControls } = require('./testing/test-controls');
 
@@ -47,6 +49,24 @@ const API_ERRORS = Object.freeze({
   }),
 });
 
+const PUBLIC_EVIDENCE_UNAVAILABLE = Object.freeze({
+  status: 503,
+  code: 'EVIDENCE_UNAVAILABLE',
+  message: 'Verified public evidence is unavailable.',
+});
+
+function sendPublicEvidence(response, evidence) {
+  const payload = JSON.stringify(evidence);
+
+  response.writeHead(200, {
+    'Cache-Control': 'no-store',
+    'Content-Length': Buffer.byteLength(payload),
+    'Content-Type': 'application/json; charset=utf-8',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  response.end(payload);
+}
+
 function requiresJsonBody(request, pathname) {
   return JSON_BODY_BOUNDARIES.has(`${request.method} ${pathname}`);
 }
@@ -62,6 +82,7 @@ function createApplication({
   testToken,
   host = '127.0.0.1',
   faultDecision,
+  environment = process.env,
 } = {}) {
   const applicationStore = store ?? createStore();
   const generateRandomBytes = randomBytes ?? crypto.randomBytes;
@@ -70,6 +91,8 @@ function createApplication({
     publicBaseUrl: 'http://localhost',
   };
   const activeFaultDecision = faultDecision ?? createFaultDecision();
+  const publicConfig = parsePublicConfig(environment);
+  const publicEvidence = parsePublicEvidence(environment);
   const testControls = createTestControls({
     enabled: testMode,
     token: testToken,
@@ -81,6 +104,7 @@ function createApplication({
   const staticAssets = createStaticAssetServer({
     faultDecision: activeFaultDecision,
     testMode,
+    publicConfig,
   });
   const sessions = createSessionService({
     store: applicationStore,
@@ -115,6 +139,19 @@ function createApplication({
           version: 1,
           testMode: testControls.enabled,
         });
+      },
+    },
+    {
+      method: 'GET',
+      path: '/evidence/latest.json',
+      handler: async (_request, response) => {
+        if (!publicEvidence.available) {
+          response.setHeader('Cache-Control', 'no-store');
+          sendError(response, PUBLIC_EVIDENCE_UNAVAILABLE);
+          return;
+        }
+
+        sendPublicEvidence(response, publicEvidence.evidence);
       },
     },
     {

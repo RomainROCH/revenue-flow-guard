@@ -7,6 +7,13 @@ const { isFaultId } = require('../testing/faults');
 
 const APP_ROOT = resolve(__dirname, '../../app');
 const FAULT_ATTRIBUTE = 'data-rfg-fault="NONE"';
+const PUBLIC_TOKENS = Object.freeze({
+  status: '{{PUBLICATION_STATUS}}',
+  contactUrl: '{{PUBLIC_CONTACT_URL}}',
+  contactLabel: '{{PUBLIC_CONTACT_LABEL}}',
+  offerName: '{{PUBLIC_OFFER_NAME}}',
+  offerSummary: '{{PUBLIC_OFFER_SUMMARY}}',
+});
 
 const STATIC_ASSETS = Object.freeze({
   '/': Object.freeze({
@@ -47,7 +54,56 @@ function injectFaultId(source, faultDecision) {
   );
 }
 
-function createStaticAssetServer({ faultDecision, testMode = false }) {
+function escapeHtml(value) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function transformPublicHtml(source, publicConfig) {
+  const tokens = Object.values(PUBLIC_TOKENS);
+  const presentTokens = tokens.filter((token) => source.includes(token));
+
+  if (presentTokens.length === 0) {
+    return source;
+  }
+
+  if (presentTokens.length !== tokens.length) {
+    throw new Error('Expected all public configuration tokens');
+  }
+
+  const values = publicConfig?.publicationReady === true
+    ? {
+        status: 'ready',
+        contactUrl: publicConfig.contact.url,
+        contactLabel: publicConfig.contact.label,
+        offerName: publicConfig.offer.name,
+        offerSummary: publicConfig.offer.summary,
+      }
+    : {
+        status: 'publication-inputs-missing',
+        contactUrl: '#publication-inputs-missing',
+        contactLabel: 'Publication inputs missing',
+        offerName: 'Publication inputs missing',
+        offerSummary: 'Publication inputs missing',
+      };
+
+  let transformed = source;
+  for (const [name, token] of Object.entries(PUBLIC_TOKENS)) {
+    transformed = transformed.replaceAll(token, escapeHtml(values[name]));
+  }
+
+  return transformed;
+}
+
+function createStaticAssetServer({
+  faultDecision,
+  testMode = false,
+  publicConfig,
+}) {
   return {
     async serve(response, pathname) {
       const asset = STATIC_ASSETS[pathname];
@@ -56,9 +112,15 @@ function createStaticAssetServer({ faultDecision, testMode = false }) {
       }
 
       const file = await readFile(asset.path);
-      const body = testMode && asset.html
-        ? Buffer.from(injectFaultId(file.toString('utf8'), faultDecision), 'utf8')
-        : file;
+      let body = file;
+
+      if (asset.html) {
+        let html = transformPublicHtml(file.toString('utf8'), publicConfig);
+        if (testMode) {
+          html = injectFaultId(html, faultDecision);
+        }
+        body = Buffer.from(html, 'utf8');
+      }
 
       response.writeHead(200, {
         'Content-Type': asset.contentType,
@@ -71,4 +133,4 @@ function createStaticAssetServer({ faultDecision, testMode = false }) {
   };
 }
 
-module.exports = { createStaticAssetServer };
+module.exports = { createStaticAssetServer, transformPublicHtml };
