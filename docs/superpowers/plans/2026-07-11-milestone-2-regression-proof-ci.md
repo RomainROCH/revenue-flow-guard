@@ -205,10 +205,18 @@ git commit -m "test: capture authoritative baseline summary"
 
 **Files:**
 - Create: `scripts/lib/process.mjs`
+- Create: `scripts/lib/process.d.mts`
+- Create: `scripts/lib/external-base-url.mjs`
+- Create: `scripts/lib/external-base-url.d.mts`
+- Create: `scripts/lib/fault-orchestrator.mjs`
 - Create: `scripts/prove-regressions.mjs`
+- Create: `scripts/prove-regressions.d.mts`
 - Create: `scripts/verify-quality.mjs`
 - Create: `tests/scripts/prove-regressions.spec.ts`
 - Modify: `package.json`
+- Modify: `.gitignore`
+- Modify: `scripts/run-baseline.mjs`
+- Modify: `tests/api/orders.spec.ts`
 - Modify: `tests/fixtures/isolated-app.ts`
 - Modify: `tests/fixtures/ui.ts`
 
@@ -224,7 +232,7 @@ Expected: FAIL because runner modules are absent.
 
 - [ ] **Step 3: Implement one-fault orchestration**
 
-Add explicit external mode to the shared fixtures: when `RFG_EXTERNAL_BASE_URL` is present, `isolatedApp` validates that loopback URL, returns it without starting a server, and forbids local barrier options; otherwise it retains per-test in-process behavior. `uiTest` consumes the same base URL. The runner allocates a loopback port, generates 32 random bytes, starts `node server.js` with test variables plus `RFG_EXTERNAL_BASE_URL`, polls health for at most 10 seconds, activates/verifies the fault, derives file/title grep from canonical ID, runs JSON reporter with retries/workers 0/1 and that environment, validates the only mapped failure/signature, and terminates the child in `finally`.
+Add explicit external mode to the shared fixtures: when `RFG_EXTERNAL_BASE_URL` is present, `isolatedApp` accepts only an exact `http://127.0.0.1:<explicit-port>` origin, returns it without starting a server, and forbids local application options; otherwise it retains per-test in-process behavior. The external UI fixture sends an armed order/session request to the server with `route.fetch()`, holds only the response, and fulfills it after release. This preserves the pending-response contract without adding a server control route. The runner reserves a loopback port, generates 32 random bytes, starts the repository server through `process.execPath` with test variables, polls health for at most 10 seconds, activates/verifies the fault, derives file/title grep from the canonical ID, and runs the repository-local Playwright CLI through `process.execPath` with retries/workers 0/1 and `RFG_EXTERNAL_BASE_URL`. The token is never passed to Playwright. It validates the only mapped failure/signature, terminates the child tree in `finally`, and writes only sanitized results to `artifacts/internal-proof/regressions.json`.
 
 - [ ] **Step 4: Enforce baseline-first quality command**
 

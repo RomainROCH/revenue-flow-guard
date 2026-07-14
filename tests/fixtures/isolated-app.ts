@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import type { Server } from 'node:http';
+import { validateExternalBaseUrl } from '../../scripts/lib/external-base-url.mjs';
 import { createBarrierController, type HeldBarrier } from './barrier';
 
 type ApplicationModule = {
@@ -18,9 +19,12 @@ type ApplicationModule = {
 
 type IsolatedApp = {
   baseURL: string;
+  externalMode: boolean;
   advanceTime: (milliseconds: number) => void;
   holdNextOrder: () => HeldBarrier;
   holdNextSessionResponse: () => HeldBarrier;
+  waitForOrderResponse: () => Promise<void>;
+  waitForSessionResponse: () => Promise<void>;
 };
 
 const missingFactoryError = 'ISOLATED_APP:createApplication is required';
@@ -91,12 +95,41 @@ export const test = base.extend<{
 }>({
   applicationOptions: [{}, { option: true }],
   isolatedApp: async ({ applicationOptions }, use) => {
-    const createApplication = loadCreateApplication();
-    let now = 0;
     const orderBarrier = createBarrierController('order barrier');
     const sessionResponseBarrier = createBarrierController(
       'session response barrier',
     );
+    const externalBaseURL = process.env.RFG_EXTERNAL_BASE_URL;
+
+    if (externalBaseURL !== undefined) {
+      const validation = validateExternalBaseUrl(externalBaseURL);
+      if (!validation.valid) {
+        throw new Error('ISOLATED_APP:RFG_EXTERNAL_BASE_URL is invalid');
+      }
+      if (Object.keys(applicationOptions).length !== 0) {
+        throw new Error(
+          'ISOLATED_APP:applicationOptions are forbidden in external mode',
+        );
+      }
+
+      await use({
+        baseURL: validation.normalizedUrl,
+        externalMode: true,
+        advanceTime() {
+          throw new Error(
+            'ISOLATED_APP:advanceTime is unavailable in external mode',
+          );
+        },
+        holdNextOrder: orderBarrier.holdNext,
+        holdNextSessionResponse: sessionResponseBarrier.holdNext,
+        waitForOrderResponse: orderBarrier.waitAtBarrier,
+        waitForSessionResponse: sessionResponseBarrier.waitAtBarrier,
+      });
+      return;
+    }
+
+    const createApplication = loadCreateApplication();
+    let now = 0;
     const server = createApplication({
       ...applicationOptions,
       clock: () => now,
@@ -118,6 +151,7 @@ export const test = base.extend<{
 
       await use({
         baseURL: `http://127.0.0.1:${address.port}`,
+        externalMode: false,
         advanceTime(milliseconds) {
           now += milliseconds;
         },
@@ -127,6 +161,8 @@ export const test = base.extend<{
         holdNextSessionResponse() {
           return sessionResponseBarrier.holdNext();
         },
+        waitForOrderResponse: orderBarrier.waitAtBarrier,
+        waitForSessionResponse: sessionResponseBarrier.waitAtBarrier,
       });
     } finally {
       await close(server);

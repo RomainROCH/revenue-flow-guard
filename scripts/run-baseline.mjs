@@ -13,12 +13,14 @@ const artifactPath = path.join(artifactDirectory, 'baseline.json');
 
 function runPlaywright() {
   return new Promise((resolve) => {
+    const env = { ...process.env };
+    delete env.RFG_EXTERNAL_BASE_URL;
     const child = spawn(
       process.execPath,
       [cliPath, 'test', 'tests/api', 'tests/ui', '--reporter=json', '--retries=0'],
       {
         cwd: projectRoot,
-        env: process.env,
+        env,
         shell: false,
         stdio: ['ignore', 'pipe', 'ignore'],
       },

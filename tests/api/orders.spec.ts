@@ -297,7 +297,6 @@ test('a successful order uses canonical item order, server totals, an opaque id,
   expect(firstBody.data.orderId).not.toContain(paymentToken);
   expect(await stock(request, isolatedApp.baseURL)).toEqual(new Map([[1, 8], [2, 10], [3, 9]]));
 
-  isolatedApp.advanceTime(5 * 60 * 1000);
   const replay = await submit(
     request,
     isolatedApp.baseURL,
@@ -310,6 +309,42 @@ test('a successful order uses canonical item order, server totals, an opaque id,
     error: null,
   });
   expect(await stock(request, isolatedApp.baseURL)).toEqual(new Map([[1, 8], [2, 10], [3, 9]]));
+});
+
+test('a completed replay remains available after its payment token expires', async ({
+  isolatedApp,
+  request,
+}) => {
+  await login(request, isolatedApp.baseURL);
+  const paymentToken = await token(request, isolatedApp.baseURL);
+  const key = 'expired-token-replay';
+  const payload = order([{ productId: 2, quantity: 1 }], paymentToken);
+  const first = await submit(
+    request,
+    isolatedApp.baseURL,
+    key,
+    payload,
+  );
+  const firstBody = await first.json();
+  const stockAfterFirstOrder = await stock(request, isolatedApp.baseURL);
+
+  expect(first.status()).toBe(201);
+  isolatedApp.advanceTime(5 * 60 * 1000);
+
+  const replay = await submit(
+    request,
+    isolatedApp.baseURL,
+    key,
+    payload,
+  );
+  expect(replay.status()).toBe(200);
+  expect(await replay.json()).toEqual({
+    data: { ...firstBody.data, replayed: true },
+    error: null,
+  });
+  expect(await stock(request, isolatedApp.baseURL)).toEqual(
+    stockAfterFirstOrder,
+  );
 });
 
 test('canonical hashing treats property and input item order as equal while a matching order is pending', async ({
