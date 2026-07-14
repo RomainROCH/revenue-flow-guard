@@ -1,0 +1,87 @@
+{
+  "config": {
+    "rootDir": "C:/demo/tests",
+    "projects": [
+      {
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/demo/tests"
+      }
+    ]
+  },
+  "suites": [
+    {
+      "title": "orders.spec.ts",
+      "file": "tests/orders.spec.ts",
+      "specs": [
+        {
+          "title": "creates an order",
+          "ok": true,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 90,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-07-14T08:10:00.000Z"
+                }
+              ],
+              "status": "expected"
+            }
+          ]
+        },
+        {
+          "title": "rejects an invalid cart",
+          "ok": false,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 140,
+                  "errors": [
+                    {
+                      "message": "Error: expected 400, received 201"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-07-14T08:10:00.120Z"
+                }
+              ],
+              "status": "unexpected"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-14T08:10:00.000Z",
+    "duration": 530,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  }
+}

@@ -170,12 +170,13 @@ git commit -m "test: define canonical regression mappings"
 **Files:**
 - Create: `scripts/run-baseline.mjs`
 - Create: `scripts/lib/playwright-json.mjs`
+- Create: `scripts/lib/playwright-json.d.mts`
 - Create: `tests/scripts/playwright-json.spec.ts`
 - Modify: `package.json`
 
 - [ ] **Step 1: Write failing parser tests**
 
-Use checked-in tiny JSON fixtures for all-pass, failed, flaky/retried, malformed, and missing-result runs. Normalize to `{ status, tests, passed, failed, retries, durationMs }`. Any retry makes authoritative baseline status `failed`.
+Use checked-in tiny JSON fixtures for all-pass, failed, flaky/retried, malformed, and missing-result runs. Normalize to `{ status, tests, passed, failed, retries, durationMs }`. Invalid or incomplete reports keep unknown metrics as `null` rather than inventing zero totals. Any skipped test or retry makes authoritative baseline status `failed`.
 
 - [ ] **Step 2: Verify red**
 
@@ -185,7 +186,7 @@ Expected: FAIL because the parser is absent.
 
 - [ ] **Step 3: Implement baseline runner**
 
-Spawn `npx playwright test tests/api tests/ui --reporter=json --retries=0`, parse stdout, write `artifacts/internal-proof/baseline.json`, and exit non-zero unless every test passed with retries 0. Preserve malformed/command failures as explicit failed summaries rather than invented totals.
+Spawn the repository-local Playwright CLI with `process.execPath`, no shell, and arguments `test tests/api tests/ui --reporter=json --retries=0`. This avoids Windows `.cmd` process-launch ambiguity while preserving the same Playwright invocation. Parse stdout, write `artifacts/internal-proof/baseline.json`, and exit non-zero unless every test passed with retries 0. Preserve malformed/command failures as explicit failed summaries rather than invented totals.
 
 - [ ] **Step 4: Verify green and commit**
 

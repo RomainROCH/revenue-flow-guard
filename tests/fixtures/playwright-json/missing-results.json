@@ -1,0 +1,43 @@
+{
+  "config": {
+    "rootDir": "C:/demo/tests",
+    "projects": [
+      {
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/demo/tests"
+      }
+    ]
+  },
+  "suites": [
+    {
+      "title": "catalog.spec.ts",
+      "file": "tests/catalog.spec.ts",
+      "specs": [
+        {
+          "title": "loads products",
+          "ok": true,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "status": "expected"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-14T08:30:00.000Z",
+    "duration": 240,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "config": {
+    "rootDir": "C:/demo/tests",
+    "projects": [
+      {
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "C:/demo/tests",
+        "retries": 1
+      }
+    ]
+  },
+  "suites": [
+    {
+      "title": "checkout.spec.ts",
+      "file": "tests/checkout.spec.ts",
+      "specs": [
+        {
+          "title": "confirms payment",
+          "ok": true,
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 60,
+                  "errors": [
+                    {
+                      "message": "Error: locator did not become visible"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-07-14T08:20:00.000Z"
+                },
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 45,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 1,
+                  "startTime": "2026-07-14T08:20:00.100Z"
+                }
+              ],
+              "status": "flaky"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-14T08:20:00.000Z",
+    "duration": 310,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 1
+  }
+}

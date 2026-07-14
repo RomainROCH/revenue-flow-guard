@@ -1,0 +1,13 @@
+{
+  "config": {},
+  "suites": [
+    {
+      "title": "broken.spec.ts"
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "duration": 100,
+    "expected": 1,
+  }
+}

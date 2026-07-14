@@ -10,7 +10,8 @@
     "test:api": "playwright test tests/api",
     "test:ui": "playwright test tests/ui",
     "test:repeat": "playwright test --repeat-each=3 --retries=0",
-    "validate:regressions": "node scripts/validate-regression-manifest.mjs"
+    "validate:regressions": "node scripts/validate-regression-manifest.mjs",
+    "baseline:json": "node scripts/run-baseline.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

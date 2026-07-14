@@ -1,4 +1,5 @@
 node_modules/
+artifacts/
 playwright/.auth/
 playwright-report/
 test-results/
