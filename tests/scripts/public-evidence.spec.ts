@@ -117,6 +117,10 @@ test.describe('public evidence construction', () => {
         durationMs: null,
       });
       expect(candidate.faults).toEqual([]);
+      const html = renderPublicSummary(candidate);
+      expect(html).toContain('Evidence unavailable or incomplete.');
+      expect(html).not.toContain('baseline tests passed');
+      expect(html).not.toContain('synthetic regressions were detected');
     }
   });
 

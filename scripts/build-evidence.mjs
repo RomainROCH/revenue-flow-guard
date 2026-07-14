@@ -90,10 +90,15 @@ async function writeAtomic(filePath, content) {
 
 async function main() {
   const commitSha = await runGit(['rev-parse', 'HEAD']);
-  const [baseline, regressions] = await Promise.all([
-    readInternalJson('baseline.json'),
-    readInternalJson('regressions.json'),
-  ]);
+  const requiredGatesPassed =
+    process.env.RFG_REQUIRED_GATES_PASSED === undefined ||
+    process.env.RFG_REQUIRED_GATES_PASSED === 'true';
+  const [baseline, regressions] = requiredGatesPassed
+    ? await Promise.all([
+        readInternalJson('baseline.json'),
+        readInternalJson('regressions.json'),
+      ])
+    : [null, null];
   const metadata = githubMetadata();
   const evidence = buildPublicEvidence({
     baseline,

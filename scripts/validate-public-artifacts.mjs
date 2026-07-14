@@ -36,8 +36,15 @@ async function main() {
   const commitSha = await runGit(['rev-parse', 'HEAD']);
   const candidate = JSON.parse(await readFile(path.join(publicDirectory, 'evidence.json'), 'utf8'));
   const validation = validatePublicEvidence(candidate, { currentCommitSha: commitSha });
-  if (!validation.valid || candidate.complete !== true || candidate.sanitized !== false) {
-    throw new Error('evidence candidate is invalid, incomplete, stale, or already promoted');
+  if (!validation.valid || candidate.sanitized !== false) {
+    throw new Error('evidence candidate is invalid, stale, or already promoted');
+  }
+  if (candidate.complete !== true) {
+    process.stderr.write(
+      'Public evidence validation failed: safe incomplete evidence was preserved.\n',
+    );
+    process.exitCode = 1;
+    return;
   }
 
   const stagingDirectory = path.join(
