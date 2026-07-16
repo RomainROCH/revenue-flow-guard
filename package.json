@@ -6,6 +6,8 @@
     "build:evidence": "node scripts/build-evidence.mjs",
     "validate:public-artifacts": "node scripts/validate-public-artifacts.mjs",
     "scan:secrets": "node scripts/scan-secrets.mjs",
+    "validate:docs": "node scripts/validate-docs.mjs",
+    "validate:repo": "node scripts/validate-repo.mjs",
     "validate:workflows": "node scripts/validate-workflows.mjs",
     "serve": "node server.js",
     "lint": "eslint . --max-warnings=0",

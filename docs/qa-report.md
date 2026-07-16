@@ -1,54 +1,78 @@
-# QA Report — Playwright E2E Demo Pack
+# QA Evidence Guide
 
-## Run summary
+## Status authority
 
-| Metric | Value |
-|---|---|
-| Date | 2026-07-09 |
-| Environment | local (Windows) |
-| Browser | Chromium 128 |
-| Playwright version | ^1.49.0 |
-| Total tests | 8 |
-| Passed | 8 |
-| Failed | 0 |
-| Flaky | 0 |
-| Duration | ~14s |
+This document intentionally contains no hand-written pass total, duration, or
+browser version. Those values become stale as the suite changes. The promoted
+`artifacts/public-evidence/evidence.json` is the machine-readable authority for
+the commit that produced it.
 
-## Result matrix
+The public manifest is promoted only after the baseline, isolated regression
+proof, configured evidence gates, and public-artifact validation succeed. The
+separate repository/public secret scan must also pass before a release is
+accepted. Missing or inconsistent evidence input remains incomplete.
 
-| Spec | Test | Status | Duration | Trace |
-|---|---|---|---|---|
-| auth.spec.ts | Login valid | ✅ PASS | ~1.2s | — |
-| auth.spec.ts | Login invalid | ✅ PASS | ~0.8s | — |
-| auth.spec.ts | Logout | ✅ PASS | ~1.0s | — |
-| dashboard.spec.ts | Product catalog | ✅ PASS | ~1.5s | — |
-| dashboard.spec.ts | Add to cart | ✅ PASS | ~1.8s | — |
-| checkout.spec.ts | Full checkout | ✅ PASS | ~2.5s | — |
-| checkout.spec.ts | Form validation | ✅ PASS | ~2.0s | — |
-| checkout.spec.ts | Network failure | ✅ PASS | ~2.5s | — |
+## Reproduction
 
-## Failure analysis
+Run from a clean checkout with the required Playwright browsers installed:
 
-No failures recorded. All 8 tests pass on first attempt.
+```bash
+npm ci
+npx playwright install chromium firefox webkit
+npm run validate:docs
+npm run validate:repo
+npm run validate:workflows
+npm run lint
+npm run typecheck
+npm run test:repeat
+npm run verify:quality
+npm run build:evidence
+npm run validate:public-artifacts
+npm run scan:secrets
+```
 
-## Flaky triage strategy
+The repeated baseline detects outcome changes without retries. The regression
+proof then executes each manifest-mapped test under one fault profile. The
+cross-browser command in the [README](../README.md#release-confidence-gate)
+checks the browser matrix independently from public evidence publication.
 
-Following Micco (2016) and Ziftci & Cavalcanti (2020):
+## Evidence interpretation
 
-1. **Detection**: Tests are re-run on failure (retries=2 in CI). If a test passes on retry, it's flagged as flaky.
-2. **Quarantine**: Flaky tests are isolated in a separate CI job and not counted toward the merge gate.
-3. **Root cause**: Traces (on-first-retry) and logs are inspected. Common causes: timing, state leakage, environment drift.
-4. **Mitigation**: Fixed waits are banned (enforced by ESLint). State isolation is verified. Server state reset via `POST /api/reset`.
+Accept the public manifest only when all of these statements are true:
 
-## Notes
+- `schemaVersion` is supported.
+- `status` is `complete` and every required gate is true.
+- `source.commitSha` is the full commit being published.
+- The baseline reports no failed, flaky, skipped, or unexpected tests.
+- Every canonical fault is detected with matching expected and observed
+  signatures.
+- Sanitization is complete and the secret scan reports no matches.
+- The CI run URL uses HTTPS.
 
-- All tests use real API calls (server.js) except the network failure test which uses `page.route()` to simulate a 500 error.
-- No `page.waitForTimeout()` calls — all waits are implicit via Playwright auto-waiting and web-first assertions (Liu et al. 2024).
-- Test suite is designed to run in CI with a `--shard` configuration for parallel execution on larger suites.
+The case-study runtime repeats these checks before it displays live evidence. It
+returns `EVIDENCE_UNAVAILABLE` with `Cache-Control: no-store` when the environment
+does not contain a valid current manifest.
 
-## References
+## Public and private artifacts
 
-- Micco (2016) — Flaky Tests at Google and How We Mitigate Them
-- Ziftci & Cavalcanti (2020) — De-Flake Your Tests (ICST)
-- Luo et al. (2014) — An Empirical Analysis of Flaky Tests (FSE)
-- Liu et al. (2024) — WEFix (WWW)
+The public allowlist contains only:
+
+- `artifacts/public-evidence/evidence.json`
+- `artifacts/public-evidence/summary.html`
+- the separately uploaded secret-scan validation report
+
+Raw Playwright JSON, HTML reports, traces, screenshots, server logs, cookies,
+headers, tokens, and absolute local paths remain private. The validator rejects
+unexpected public files and unreadable content.
+
+## Failure triage
+
+1. Treat an infrastructure error as an invalid proof, not a product regression.
+2. Reproduce the exact zero-retry command and preserve private diagnostics.
+3. Determine whether the behavior, test contract, fixture isolation, or
+   environment is wrong.
+4. Add a failing regression test before changing behavior.
+5. Rebuild evidence from the resulting commit; never edit the manifest by hand.
+
+See the [test plan](test-plan.md) for risk ownership and the
+[references](references.md) for the evidence limits behind this policy.

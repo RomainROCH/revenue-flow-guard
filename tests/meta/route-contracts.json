@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "testFile": "tests/api/http-contracts.spec.ts",
+      "testTitle": "returns the exact health contract in normal mode"
+    },
+    {
+      "method": "GET",
+      "path": "/evidence/latest.json",
+      "testFile": "tests/api/public-runtime.spec.ts",
+      "testTitle": "returns the raw exact valid manifest with no-store caching"
+    },
+    {
+      "method": "POST",
+      "path": "/api/session",
+      "testFile": "tests/api/session.spec.ts",
+      "testTitle": "POST /api/session creates a public session and strict local cookie"
+    },
+    {
+      "method": "GET",
+      "path": "/api/session",
+      "testFile": "tests/api/session.spec.ts",
+      "testTitle": "GET /api/session returns the authenticated public user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/session",
+      "testFile": "tests/api/session.spec.ts",
+      "testTitle": "DELETE /api/session invalidates an authenticated session and remains idempotent"
+    },
+    {
+      "method": "POST",
+      "path": "/api/payment-tokens",
+      "testFile": "tests/api/payment-tokens.spec.ts",
+      "testTitle": "POST /api/payment-tokens returns distinct opaque five-minute tokens for approved scenarios only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/orders",
+      "testFile": "tests/api/orders.spec.ts",
+      "testTitle": "a successful order uses canonical item order, server totals, an opaque id, and replays exactly once"
+    },
+    {
+      "method": "GET",
+      "path": "/api/products",
+      "testFile": "tests/api/catalog.spec.ts",
+      "testTitle": "GET /api/products returns the exact stable catalogue for an authenticated session"
+    }
+  ]
+}

@@ -1,71 +1,66 @@
-# Test Plan — Playwright E2E Demo Pack
+# Test Plan
 
-## Scope
+## Purpose
 
-This pack covers the top 10% of the test pyramid (Wacker 2015; Fowler 2012). It validates 3 critical business flows through E2E browser tests. Unit and integration tests are outside scope — this pack is designed to complement an existing lower-level test suite.
+This plan protects one synthetic SaaS revenue journey: authenticate, load the
+server-owned catalogue, build a temporary cart, tokenize a fake payment outcome,
+and submit an idempotent order. It prioritizes business risk rather than a target
+test count or coverage percentage.
 
-## Test matrix
+The [research basis](references.md#scientific-evidence) supports isolation,
+condition-based synchronization, and skepticism toward coverage-only claims. It
+does not prove this repository is free of flaky behavior.
 
-| Spec | Flow | Tests | Browser | Environment |
-|---|---|---|---|---|
-| auth.spec.ts | Authentication | 3 | Chromium | Local (webServer) + CI (ubuntu-latest) |
-| dashboard.spec.ts | Product browsing | 2 | Chromium | Local (webServer) + CI (ubuntu-latest) |
-| checkout.spec.ts | Purchase checkout | 3 | Chromium | Local (webServer) + CI (ubuntu-latest) |
-| **Total** | **3 flows** | **8 tests** | **1 browser** | **2 environments** |
+## Commercial regression contracts
 
-## Test scenarios
+`regressions/manifest.json` is the executable authority. Each fault maps to one
+durable Playwright test ID and one exact `RFG:` assertion signature.
 
-### Auth — `auth.spec.ts`
+| Fault ID | Revenue risk | Canonical test ID |
+|---|---|---|
+| `AUTH_BYPASS` | Protected catalogue data is exposed without a server session. | `tests/api/catalog.spec.ts › GET /api/products requires a known session and leaks no catalogue data` |
+| `CLIENT_PRICE_TRUST` | A browser-controlled amount changes the order total. | `tests/api/orders.spec.ts › POST /api/orders enforces exact top-level and item fields and forbids client prices or totals` |
+| `DUPLICATE_ORDER` | Replaying an idempotency key creates another order. | `tests/api/orders.spec.ts › a successful order uses canonical item order, server totals, an opaque id, and replays exactly once` |
+| `EMPTY_CART_ACCEPTED` | An empty purchase is accepted. | `tests/api/orders.spec.ts › POST /api/orders maps empty, duplicate, unknown, and invalid-quantity items to INVALID_ITEMS without stock changes` |
+| `PAYMENT_DECLINE_HIDDEN` | A declined payment is presented as a successful order. | `tests/ui/checkout.spec.ts › safe demonstration checkout › shows a declined-payment message, preserves the cart, and uses a new key for a new attempt` |
+| `SUBMIT_CONTROL_MISSING` | A pending order can be submitted repeatedly. | `tests/ui/checkout.spec.ts › safe demonstration checkout › disables every submission path while the first order is pending` |
 
-| Test | Given | When | Then | Risk covered |
-|---|---|---|---|---|
-| Login valid | User is on login page | Fills correct credentials and submits | Dashboard visible, URL has #dashboard | Auth bypass |
-| Login invalid | User is on login page | Fills wrong credentials and submits | Error message "Invalid credentials" visible | Unauthorized access |
-| Logout | User is authenticated on dashboard | Clicks Logout | Login page visible, session cleared | Session fixation |
+`npm run verify:quality` first runs the normal baseline with retries disabled,
+then activates each fault in isolation. A proof is rejected if the mapped test
+does not fail, if the exact signature is absent, if another test fails, or if
+infrastructure prevents a trustworthy result.
 
-### Dashboard — `dashboard.spec.ts`
+## Defense-in-depth suites
 
-| Test | Given | When | Then | Risk covered |
-|---|---|---|---|---|
-| Product catalog | User is authenticated | Dashboard loads | 3 product cards (role=article) visible | Empty state / missing products |
-| Add to cart | Product card is visible | Clicks "Add to Cart" | Cart badge shows count 1 | Cart not updating |
+| Surface | What is checked |
+|---|---|
+| Session | Cookie attributes, invalid credentials, expiry, invalidation, and capacity behavior. |
+| Catalogue | Authentication, stable server data, keyboard interaction, responsive controls, and fresh cart state. |
+| Payment token | Authentication, strict input, opacity, expiry, capacity, and single use. |
+| Order | Canonical hashing, server totals, stock, idempotency conflict, replay, decline, transient retry, and capacity. |
+| HTTP boundary | Body size, media type, malformed JSON, error envelopes, hidden test controls, and not-found behavior. |
+| Public runtime | Exact evidence schema, commit binding, no-store responses, escaped publication fields, and fail-closed fallback. |
+| Case study | Static content, valid/unavailable evidence, keyboard focus, mobile layout, overflow, and browser zoom. |
+| Repository policy | Regression mappings, route coverage, workflow pins, docs claims, script reachability, and unused fixtures. |
 
-### Checkout — `checkout.spec.ts`
+## Execution policy
 
-| Test | Given | When | Then | Risk covered |
-|---|---|---|---|---|
-| Full checkout | Product in cart, on checkout page | Fills valid form, clicks Place Order | Order confirmation visible with order number | Checkout broken |
-| Form validation | Product in cart, on checkout page | Clicks Place Order with empty fields | Validation error "Please fill in all fields" visible | No feedback on bad input |
-| Network failure | Product in cart, on checkout page | Fills valid form, API returns 500 | Error message "could not place your order" visible | No error handling |
+- Normal test state is isolated per test.
+- User-facing locators and web-first assertions are preferred.
+- Fixed sleeps are forbidden.
+- Deterministic barriers coordinate intentionally pending operations.
+- The authoritative local proof uses retries disabled and one worker.
+- Pull requests gate on Chromium; the scheduled/manual baseline adds Firefox and
+  WebKit without publishing new evidence.
+- Raw traces, reports, cookies, headers, credentials, and workspace paths are not
+  public artifacts.
 
-## Prerequisites
+These choices follow the current [Playwright guidance](references.md#framework-authority)
+and the limitations described in the [scientific evidence](references.md#scientific-evidence).
 
-- Node.js LTS (20.x or later)
-- npm 10.x or later
+## Acceptance
 
-## Environment configuration
-
-Tests run against a local web server (`server.js`, port 8080) started automatically by Playwright's `webServer` config. In CI, `reuseExistingServer` is disabled (fresh server each run).
-
-## Acceptance criteria per test
-
-All assertions use web-first matchers (`toBeVisible`, `toHaveText`, `toHaveURL`) with Playwright's auto-retry. Zero `waitForTimeout` calls. Each test must pass 3 consecutive runs without flaky failures.
-
-## Flakiness mitigation strategy
-
-- Fresh `BrowserContext` per test (isolated cookies, storage, session)
-- `retries: 2` in CI, `0` locally
-- `trace: 'on-first-retry'` for debugging
-- `page.route()` for deterministic API data
-- No external service dependencies
-- Server state reset via `POST /api/reset` available if needed
-- ESLint rules enforce no-wait-for-timeout and prefer-web-first-assertions
-
-## References
-
-- Luo et al. (2014) — Flaky test root cause analysis (FSE)
-- Lam et al. (2020) — Flaky test lifecycle (ICSE)
-- Liu et al. (2024) — WEFix: auto-wait reduces flakiness 73% (WWW)
-- Soares et al. (2020) — Test smells prevalence (MSR)
-- Micco (2016) — Google flaky test mitigation
-- Ziftci & Cavalcanti (2020) — Automated flaky test root cause clustering (ICST)
+The repository is release-ready only when the commands in the
+[QA evidence guide](qa-report.md#reproduction) succeed on the commit being
+published, the promoted manifest is complete and sanitized, and the case study
+reads that same commit-bound evidence. A retry-pass is not accepted as proof.
