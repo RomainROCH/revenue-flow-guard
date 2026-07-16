@@ -16,10 +16,14 @@
     "test:api": "playwright test tests/api",
     "test:ui": "playwright test tests/ui",
     "test:repeat": "playwright test --repeat-each=3 --retries=0",
+    "validate:publication-inputs": "node scripts/validate-publication-inputs.mjs",
     "validate:regressions": "node scripts/validate-regression-manifest.mjs",
     "baseline:json": "node scripts/run-baseline.mjs",
     "prove:regressions": "node scripts/prove-regressions.mjs",
-    "verify:quality": "node scripts/verify-quality.mjs"
+    "verify:quality": "node scripts/verify-quality.mjs",
+    "validate:publication": "node scripts/validate-publication.mjs",
+    "test:public": "node scripts/validate-publication.mjs && playwright test tests/smoke/public.spec.ts --retries=0 --workers=1",
+    "release:check": "node scripts/release-check.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

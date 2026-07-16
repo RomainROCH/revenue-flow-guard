@@ -107,7 +107,7 @@ export function startManagedProcess({
       env,
       detached: process.platform !== 'win32',
       shell: false,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });
   } catch {
@@ -115,10 +115,13 @@ export function startManagedProcess({
       kind: 'spawn_error',
       stdout: '',
       stdoutTruncated: false,
+      stderr: '',
+      stderrTruncated: false,
     };
   }
 
   const output = boundedStdout(child.stdout, maxStdoutBytes);
+  const stderrOutput = boundedStdout(child.stderr, maxStdoutBytes);
   let terminalResult;
   const exitPromise = new Promise((resolve) => {
     child.once('error', () => {
@@ -126,6 +129,8 @@ export function startManagedProcess({
         kind: 'spawn_error',
         stdout: output.read(),
         stdoutTruncated: output.isTruncated(),
+        stderr: stderrOutput.read(),
+        stderrTruncated: stderrOutput.isTruncated(),
       };
       resolve(terminalResult);
     });
@@ -137,6 +142,8 @@ export function startManagedProcess({
         signal,
         stdout: output.read(),
         stdoutTruncated: output.isTruncated(),
+        stderr: stderrOutput.read(),
+        stderrTruncated: stderrOutput.isTruncated(),
       };
       resolve(terminalResult);
     });
@@ -151,6 +158,9 @@ export function startManagedProcess({
       return terminalResult !== undefined;
     },
     readStdout: output.read,
+    readStdoutTruncated: () => output.isTruncated(),
+    readStderr: stderrOutput.read,
+    readStderrTruncated: () => stderrOutput.isTruncated(),
     waitForExit: () => exitPromise,
     async stop() {
       await killTree(child, () => terminalResult !== undefined);
@@ -162,6 +172,8 @@ export function startManagedProcess({
           signal: child.signalCode,
           stdout: output.read(),
           stdoutTruncated: output.isTruncated(),
+          stderr: stderrOutput.read(),
+          stderrTruncated: stderrOutput.isTruncated(),
         })),
       ]);
     },
@@ -191,6 +203,9 @@ export async function runProcess(options) {
     return {
       kind: 'timeout',
       stdout: managed.readStdout(),
+      stderr: managed.readStderr(),
+      stdoutTruncated: managed.readStdoutTruncated(),
+      stderrTruncated: managed.readStderrTruncated(),
     };
   } finally {
     if (timer) clearTimeout(timer);

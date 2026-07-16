@@ -3,6 +3,7 @@ artifacts/
 .env
 .env.*
 !.env.example
+.publication-inputs.json
 playwright/.auth/
 playwright-report/
 test-results/

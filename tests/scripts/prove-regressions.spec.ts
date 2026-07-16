@@ -7,7 +7,10 @@ import {
   validateHealthContract,
   validateStateContract,
 } from '../../scripts/prove-regressions.mjs';
-import { runProcess } from '../../scripts/lib/process.mjs';
+import {
+  runProcess,
+  startManagedProcess,
+} from '../../scripts/lib/process.mjs';
 
 const MAPPING = Object.freeze({
   id: 'AUTH_BYPASS',
@@ -505,4 +508,53 @@ test('runProcess times out and leaves no long-lived child behind', async () => {
       { timeout: 1_000, intervals: [20, 50, 100] },
     )
     .toBe(false);
+});
+
+test('runProcess captures stderr separately from stdout', async () => {
+  const fixture = join(__dirname, '..', 'fixtures', 'process', 'stderr.mjs');
+
+  const result = await runProcess({
+    command: process.execPath,
+    args: [fixture],
+    timeoutMs: 1_000,
+  });
+
+  expect(result.kind).toBe('exit');
+  if (result.kind !== 'exit') return;
+  expect(result.stdout).toBe('public-output');
+  expect(result.stderr).toBe('diagnostic-output');
+  expect(result.stderrTruncated).toBe(false);
+});
+
+test('runProcess reports bounded output truncation on timeout', async () => {
+  test.setTimeout(2_000);
+  const fixture = join(__dirname, '..', 'fixtures', 'process', 'long-lived.mjs');
+
+  const result = await runProcess({
+    command: process.execPath,
+    args: [fixture],
+    timeoutMs: 300,
+    maxStdoutBytes: 1,
+  });
+
+  expect(result.kind).toBe('timeout');
+  if (result.kind !== 'timeout') return;
+  expect(result.stdout).toHaveLength(1);
+  expect(result.stdoutTruncated).toBe(true);
+  expect(result.stderrTruncated).toBe(false);
+});
+
+test('startManagedProcess returns the complete safe spawn-error shape', () => {
+  const result = startManagedProcess({
+    command: process.execPath,
+    cwd: 42 as unknown as string,
+  });
+
+  expect(result).toEqual({
+    kind: 'spawn_error',
+    stdout: '',
+    stdoutTruncated: false,
+    stderr: '',
+    stderrTruncated: false,
+  });
 });

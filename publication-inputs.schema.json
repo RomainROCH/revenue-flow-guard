@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:revenue-flow-guard:publication-inputs:schema:v1",
+  "title": "Publication Inputs",
+  "description": "Approved publication inputs for the Revenue Flow Guard case study",
+  "type": "object",
+  "properties": {
+    "approvedBy": {
+      "const": "user"
+    },
+    "approvedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
+    },
+    "visibility": {
+      "const": "public"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[^\\s](?:.*[^\\s])?$"
+    },
+    "offerName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\s](?:.*[^\\s])?$"
+    },
+    "offerSummary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^[^\\s](?:.*[^\\s])?$"
+    },
+    "contactUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "contactLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\s](?:.*[^\\s])?$"
+    },
+    "hostingProvider": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^\\s](?:.*[^\\s])?$"
+    },
+    "siteSlug": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[a-z](?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "accessMode": {
+      "const": "public"
+    }
+  },
+  "required": [
+    "approvedBy",
+    "approvedAt",
+    "repository",
+    "visibility",
+    "description",
+    "offerName",
+    "offerSummary",
+    "contactUrl",
+    "contactLabel",
+    "hostingProvider",
+    "siteSlug",
+    "accessMode"
+  ],
+  "additionalProperties": false
+}

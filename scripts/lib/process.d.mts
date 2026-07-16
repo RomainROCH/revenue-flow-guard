@@ -4,17 +4,24 @@ export type ProcessExit = {
   signal: NodeJS.Signals | null;
   stdout: string;
   stdoutTruncated: boolean;
+  stderr: string;
+  stderrTruncated: boolean;
 };
 
 export type ProcessSpawnError = {
   kind: 'spawn_error';
   stdout: string;
   stdoutTruncated: boolean;
+  stderr: string;
+  stderrTruncated: boolean;
 };
 
 export type ProcessTimeout = {
   kind: 'timeout';
   stdout: string;
+  stdoutTruncated: boolean;
+  stderr: string;
+  stderrTruncated: boolean;
 };
 
 export type ProcessOptions = {
@@ -31,6 +38,9 @@ export type ManagedProcess = {
   readonly pid: number | null;
   readonly exited: boolean;
   readStdout(): string;
+  readStdoutTruncated(): boolean;
+  readStderr(): string;
+  readStderrTruncated(): boolean;
   waitForExit(): Promise<ProcessExit | ProcessSpawnError>;
   stop(): Promise<ProcessExit | ProcessSpawnError>;
 };
