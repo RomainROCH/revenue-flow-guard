@@ -145,7 +145,7 @@ test.describe('public evidence environment', () => {
     const duplicateId = validEvidence();
     duplicateId.faults[1].id = duplicateId.faults[0].id;
     const brokenContract = validEvidence();
-    brokenContract.faults[0].observedSignature = 'RFG:AUTH_BYPASS:WRONG';
+    brokenContract.faults[0].observedSignature = 'not-the-approved-signature';
     const forgedMapping = validEvidence();
     forgedMapping.faults[0].testId =
       'tests/api/forged.spec.ts › forged mapping';
