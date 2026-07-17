@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 type PackageJson = {
   scripts?: Record<string, string>;
+  devDependencies?: Record<string, string>;
 };
 
 type TypeScriptConfig = {
@@ -20,7 +21,7 @@ test('enforces the executable project contract', () => {
   const scripts = packageJson.scripts ?? {};
 
   expect(scripts.build, 'PROJECT_CONTRACT:build script is required').toBe(
-    'npm run typecheck',
+    'npm run typecheck && node scripts/build-site.mjs',
   );
   expect(scripts.start, 'PROJECT_CONTRACT:start script is required').toBe(
     'node server.js',
@@ -37,6 +38,17 @@ test('enforces the executable project contract', () => {
   expect(scripts['test:repeat']).toBe(
     'playwright test --repeat-each=3 --retries=0',
   );
+
+  expect(
+    scripts['test:sites'],
+    'PROJECT_CONTRACT:test:sites script is required',
+  ).toBe('npm run build && playwright test --config playwright.sites.config.ts');
+
+  const devDeps = packageJson.devDependencies ?? {};
+  expect(
+    devDeps.wrangler,
+    'PROJECT_CONTRACT:wrangler devDependency is required',
+  ).toBe('4.112.0');
 
   const tsconfigPath = rootPath('tsconfig.json');
   expect(existsSync(tsconfigPath)).toBe(true);

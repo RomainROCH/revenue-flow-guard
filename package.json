@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "npm run typecheck",
+    "build": "npm run typecheck && node scripts/build-site.mjs",
     "start": "node server.js",
     "build:evidence": "node scripts/build-evidence.mjs",
     "validate:public-artifacts": "node scripts/validate-public-artifacts.mjs",
@@ -18,6 +18,7 @@
     "test:api": "playwright test tests/api",
     "test:ui": "playwright test tests/ui",
     "test:repeat": "playwright test --repeat-each=3 --retries=0",
+    "test:sites": "npm run build && playwright test --config playwright.sites.config.ts",
     "validate:publication-inputs": "node scripts/validate-publication-inputs.mjs",
     "validate:regressions": "node scripts/validate-regression-manifest.mjs",
     "baseline:json": "node scripts/run-baseline.mjs",
@@ -33,6 +34,7 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
+    "wrangler": "4.112.0",
     "eslint-plugin-playwright": "^2.0.0",
     "typescript": "^5.4.0"
   }
