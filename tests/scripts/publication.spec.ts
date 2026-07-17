@@ -8,6 +8,10 @@ import { join, resolve } from 'node:path';
 const repositoryRoot = resolve(__dirname, '..', '..');
 const validator = resolve(repositoryRoot, 'scripts', 'validate-publication-inputs.mjs');
 
+async function removeTempDir(root: string): Promise<void> {
+  await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+}
+
 const REQUIRED_KEYS = [
   'approvedBy', 'approvedAt', 'repository', 'visibility',
   'description', 'offerName', 'offerSummary', 'contactUrl',
@@ -40,7 +44,7 @@ async function withInputs(
     }
     await assertion(root);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await removeTempDir(root);
   }
 }
 
@@ -349,7 +353,7 @@ test.describe('release-check orchestration', () => {
 
       await assertion(root);
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await removeTempDir(root);
     }
   }
 
@@ -455,7 +459,7 @@ test.describe('PowerShell wrappers', () => {
       );
       await assertion(root);
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await removeTempDir(root);
     }
   }
 
