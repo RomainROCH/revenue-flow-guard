@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const root = resolve(__dirname, '..', '..');
 const checkoutPin =
@@ -201,4 +202,37 @@ test('the repository workflow validator is wired and passes the canonical files'
   });
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout.trim()).toBe('Workflow policy validated.');
+});
+
+test('handles CRLF line endings in canonical workflow files', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rfg-workflow-crlf-'));
+  try {
+    mkdirSync(join(tmp, 'scripts'), { recursive: true });
+    mkdirSync(join(tmp, '.github', 'workflows'), { recursive: true });
+    cpSync(
+      join(root, 'scripts', 'validate-workflows.mjs'),
+      join(tmp, 'scripts', 'validate-workflows.mjs'),
+    );
+
+    const files: Array<[string, string]> = [
+      ['.github/workflows/playwright.yml', join(root, '.github/workflows/playwright.yml')],
+      ['.github/workflows/cross-browser.yml', join(root, '.github/workflows/cross-browser.yml')],
+      ['playwright.cross-browser.config.ts', join(root, 'playwright.cross-browser.config.ts')],
+      ['package.json', join(root, 'package.json')],
+    ];
+    for (const [relative, source] of files) {
+      writeFileSync(join(tmp, relative), readFileSync(source, 'utf8').replace(/\r?\n/g, '\r\n'), 'utf8');
+    }
+
+    const result = spawnSync(process.execPath, ['scripts/validate-workflows.mjs'], {
+      cwd: tmp,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('Workflow policy validated.');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

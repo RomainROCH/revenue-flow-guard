@@ -220,11 +220,12 @@ function validateCrossBrowserConfig(text) {
 
 async function main() {
   try {
+    const normalize = (text) => text.replace(/\r\n?/g, '\n');
     const [pullRequestWorkflow, crossBrowserWorkflow, crossBrowserConfig, packageText] = await Promise.all([
-      readFile(resolve(root, '.github/workflows/playwright.yml'), 'utf8'),
-      readFile(resolve(root, '.github/workflows/cross-browser.yml'), 'utf8'),
-      readFile(resolve(root, 'playwright.cross-browser.config.ts'), 'utf8'),
-      readFile(resolve(root, 'package.json'), 'utf8'),
+      readFile(resolve(root, '.github/workflows/playwright.yml'), 'utf8').then(normalize),
+      readFile(resolve(root, '.github/workflows/cross-browser.yml'), 'utf8').then(normalize),
+      readFile(resolve(root, 'playwright.cross-browser.config.ts'), 'utf8').then(normalize),
+      readFile(resolve(root, 'package.json'), 'utf8').then(normalize),
     ]);
     const packageJson = JSON.parse(packageText);
 
