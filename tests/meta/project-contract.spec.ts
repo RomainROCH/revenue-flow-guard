@@ -19,6 +19,12 @@ test('enforces the executable project contract', () => {
   ) as PackageJson;
   const scripts = packageJson.scripts ?? {};
 
+  expect(scripts.build, 'PROJECT_CONTRACT:build script is required').toBe(
+    'npm run typecheck',
+  );
+  expect(scripts.start, 'PROJECT_CONTRACT:start script is required').toBe(
+    'node server.js',
+  );
   expect(
     scripts.typecheck,
     'PROJECT_CONTRACT:typecheck script is required',
