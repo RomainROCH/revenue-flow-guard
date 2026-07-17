@@ -1,5 +1,7 @@
 # Revenue Flow Guard
 
+[![Revenue Flow Guard CI](https://github.com/RomainROCH/revenue-flow-guard/actions/workflows/playwright.yml/badge.svg?branch=main)](https://github.com/RomainROCH/revenue-flow-guard/actions/workflows/playwright.yml?query=branch%3Amain)
+
 Revenue Flow Guard is a productized Playwright case study for a revenue-critical
 SaaS journey. It combines a secure synthetic checkout, deterministic regression
 injection, fail-closed public evidence, and reproducible CI policy.
