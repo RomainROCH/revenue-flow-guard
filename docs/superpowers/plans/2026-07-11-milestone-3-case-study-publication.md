@@ -251,7 +251,7 @@ Run `gh run list --workflow playwright.yml --branch main --limit 1 --json databa
 
 - [ ] **Step 4: Download and validate exact-run evidence**
 
-Run `gh run download $env:RFG_CI_RUN_ID --name public-evidence --dir artifacts/downloaded-public-evidence`, then `node scripts/validate-public-artifacts.mjs artifacts/downloaded-public-evidence`.
+Run `gh run download $env:RFG_CI_RUN_ID --name revenue-flow-guard-evidence --dir artifacts/downloaded-public-evidence`, then `node scripts/validate-public-artifacts.mjs artifacts/downloaded-public-evidence`.
 
 Expected: PASS and evidence source commit equals local/remote HEAD.
 

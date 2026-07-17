@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import {
   buildPublicEvidence,
   renderPublicSummary,
@@ -12,6 +14,8 @@ import {
   scanText,
   validateSecretAllowlist,
 } from '../../scripts/lib/secret-scanner.mjs';
+
+const repositoryRoot = resolve(__dirname, '../..');
 
 const COMMIT_SHA = 'a'.repeat(40);
 const GENERATED_AT = '2026-07-14T12:00:00.000Z';
@@ -422,5 +426,104 @@ test.describe('public evidence directory scanning', () => {
         commitSha: COMMIT_SHA,
       }),
     ).resolves.toMatchObject({ matches: 0 });
+  });
+});
+
+test.describe('validate-public-artifacts.mjs CLI', () => {
+  test('reads the downloaded artifact root from the positional argument', async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), 'pw-public-evidence-'));
+    const repoDir = join(tempDir, 'repo');
+    const scriptsDir = join(repoDir, 'scripts');
+    const libDir = join(scriptsDir, 'lib');
+    const downloadedRoot = join(tempDir, 'downloaded');
+    const publicEvDir = join(downloadedRoot, 'public-evidence');
+    const validationDir = join(downloadedRoot, 'validation');
+
+    try {
+      await mkdir(libDir, { recursive: true });
+
+      const fileMap: [string, string][] = [
+        [join(repositoryRoot, 'scripts', 'validate-public-artifacts.mjs'), join(scriptsDir, 'validate-public-artifacts.mjs')],
+        [join(repositoryRoot, 'scripts', 'lib', 'public-evidence.mjs'), join(libDir, 'public-evidence.mjs')],
+        [join(repositoryRoot, 'scripts', 'lib', 'secret-scanner.mjs'), join(libDir, 'secret-scanner.mjs')],
+      ];
+      await Promise.all(fileMap.map(([src, dst]) => readFile(src).then((data) => writeFile(dst, data))));
+
+      const git = (args: string[]) => {
+        const result = spawnSync('git', args, { cwd: repoDir, encoding: 'utf8' });
+        if (result.error) throw result.error;
+        if (result.status !== 0) throw new Error(`git ${args[0]} exited with code ${result.status}: ${result.stderr}`);
+        return result;
+      };
+
+      git(['init']);
+      git(['config', 'user.email', 'test@test.test']);
+      git(['config', 'user.name', 'Test']);
+      git(['add', '-A']);
+      git(['commit', '-m', 'init']);
+      const { stdout: headSha } = git(['rev-parse', 'HEAD']);
+
+      const baseline = successfulBaseline();
+      const regressions = successfulRegressions();
+      const candidate = buildPublicEvidence({
+        baseline,
+        regressions,
+        commitSha: headSha.trim(),
+        ciRunId: null,
+        ciRunUrl: null,
+        generatedAt: GENERATED_AT,
+      });
+      const promoted = { ...candidate, sanitized: true };
+
+      await mkdir(publicEvDir, { recursive: true });
+      await mkdir(validationDir, { recursive: true });
+      await writeFile(join(publicEvDir, 'evidence.json'), JSON.stringify(promoted, null, 2) + '\n');
+      await writeFile(join(publicEvDir, 'summary.html'), renderPublicSummary(promoted));
+      await writeFile(
+        join(validationDir, 'secret-scan.json'),
+        JSON.stringify({
+          commitSha: headSha.trim(),
+          scannedFiles: 3,
+          matches: 0,
+          validatorVersion: 'secret-scanner-v1',
+        }) + '\n',
+      );
+
+      const originalPaths = [
+        join(publicEvDir, 'evidence.json'),
+        join(publicEvDir, 'summary.html'),
+        join(validationDir, 'secret-scan.json'),
+      ];
+      const originalBytes = await Promise.all(originalPaths.map((p) => readFile(p)));
+
+      const result = spawnSync(process.execPath, [join(scriptsDir, 'validate-public-artifacts.mjs'), downloadedRoot], {
+        cwd: repoDir,
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('Downloaded public evidence validated.');
+
+      const afterBytes = await Promise.all(originalPaths.map((p) => readFile(p)));
+      expect(afterBytes).toEqual(originalBytes);
+
+      const unexpectedFile = join(downloadedRoot, 'debug-trace.zip');
+      await writeFile(unexpectedFile, Buffer.from([1, 2, 3, 4]));
+      const unexpectedOriginalBytes = await readFile(unexpectedFile);
+
+      const failedResult = spawnSync(process.execPath, [join(scriptsDir, 'validate-public-artifacts.mjs'), downloadedRoot], {
+        cwd: repoDir,
+        encoding: 'utf8',
+      });
+
+      expect(failedResult.status).not.toBe(0);
+      expect(failedResult.stderr).toContain('Downloaded public evidence validation failed:');
+
+      const finalPaths = [...originalPaths, unexpectedFile];
+      const finalBytes = await Promise.all(finalPaths.map((p) => readFile(p)));
+      expect(finalBytes).toEqual([...originalBytes, unexpectedOriginalBytes]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });
