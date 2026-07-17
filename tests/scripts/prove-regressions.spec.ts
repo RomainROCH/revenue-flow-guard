@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   classifyFaultReport,
@@ -557,4 +559,34 @@ test('startManagedProcess returns the complete safe spawn-error shape', () => {
     stderr: '',
     stderrTruncated: false,
   });
+});
+
+test('runProcess waits for descendant stdio pipes to close', async () => {
+  const fixture = join(__dirname, '..', 'fixtures', 'process', 'descendant-holds-pipe.mjs');
+  const cwd = await mkdtemp(join(tmpdir(), 'prove-regressions-'));
+
+  try {
+    const result = await runProcess({
+      command: process.execPath,
+      args: [fixture],
+      timeoutMs: 2_000,
+      cwd,
+    });
+
+    expect(result.kind).toBe('exit');
+    if (result.kind !== 'exit') return;
+
+    expect(result.stdout).toContain('DESCENDANT_PIPE_CLOSED');
+
+    await rm(cwd, { recursive: true, force: true });
+  } finally {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await rm(cwd, { recursive: true, force: true });
+        break;
+      } catch {
+        if (attempt < 4) await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+  }
 });

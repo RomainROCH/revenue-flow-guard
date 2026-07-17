@@ -134,7 +134,7 @@ export function startManagedProcess({
       };
       resolve(terminalResult);
     });
-    child.once('exit', (exitCode, signal) => {
+    child.once('close', (exitCode, signal) => {
       if (terminalResult) return;
       terminalResult = {
         kind: 'exit',
