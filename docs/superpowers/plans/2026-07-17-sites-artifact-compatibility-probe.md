@@ -86,11 +86,11 @@ This plan ends after the production compatibility result is known. It does not p
 **Files:**
 - Review all files changed by Chunks 1–2.
 
-- [ ] Run focused tests, `npm run lint`, `npm run typecheck`, `npm run validate:repo`, `npm run validate:docs`, `npm run scan:secrets`, and `npm run test:sites`.
-- [ ] Run `npm run release:check`; inspect full output and require zero failures.
-- [ ] Run `git diff --check`, inspect the complete diff against the design, and confirm `dist`, credentials, evidence artifacts, and local Wrangler state are untracked/ignored.
-- [ ] Perform an independent implementation review. Fix all correctness, security, truthfulness, or scope findings and rerun the affected gates.
-- [ ] Commit the compatibility implementation only after fresh proof is green.
+- [x] Run focused tests, `npm run lint`, `npm run typecheck`, `npm run validate:repo`, `npm run validate:docs`, `npm run scan:secrets`, and `npm run test:sites`.
+- [x] Run `npm run release:check`; inspect full output and require zero failures.
+- [x] Run `git diff --check`, inspect the complete diff against the design, and confirm `dist`, credentials, evidence artifacts, and local Wrangler state are untracked/ignored.
+- [x] Perform an independent implementation review. Fix all correctness, security, truthfulness, or scope findings and rerun the affected gates.
+- [x] Commit the compatibility implementation only after fresh proof is green.
 
 ### Task 5: Publish the exact source and execute the production gate
 
