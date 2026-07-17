@@ -9,5 +9,5 @@
     "noEmit": true,
     "esModuleInterop": true
   },
-  "include": ["playwright.config.ts", "tests/**/*.ts"]
+  "include": ["playwright.config.ts", "playwright.sites.config.ts", "tests/**/*.ts"]
 }

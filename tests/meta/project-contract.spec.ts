@@ -66,5 +66,9 @@ test('enforces the executable project contract', () => {
     noEmit: true,
     esModuleInterop: true,
   });
-  expect(tsconfig.include).toEqual(['playwright.config.ts', 'tests/**/*.ts']);
+  expect(tsconfig.include).toEqual([
+    'playwright.config.ts',
+    'playwright.sites.config.ts',
+    'tests/**/*.ts',
+  ]);
 });
