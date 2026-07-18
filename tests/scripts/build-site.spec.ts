@@ -1,240 +1,433 @@
 import { expect, test } from '@playwright/test';
 import {
   existsSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
+  symlinkSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 
-async function loadBuildSite() {
-  const mod = await import('../../scripts/build-site.mjs') as {
-    buildSite: (options: {
-      sourceRoot: string;
-      outputRoot: string;
-    }) => Promise<void>;
-  };
-  return mod.buildSite;
+const FINALIZER = resolve(process.cwd(), 'scripts', 'finalize-site-build.mjs');
+
+const TEST_PROJECT_ID = `appgprj_${'0'.repeat(32)}`;
+const VALID_HOSTING_JSON = JSON.stringify({ project_id: TEST_PROJECT_ID });
+
+function removeTempRoot(root: string) {
+  rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
 }
 
 function createTempRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'build-site-test-'));
+  return mkdtempSync(join(tmpdir(), 'finalize-site-test-'));
 }
 
-function removeTempRoot(root: string) {
-  rmSync(root, { recursive: true, force: true });
-}
-
-function createRequiredInputs(root: string) {
-  mkdirSync(join(root, 'app'), { recursive: true });
-  mkdirSync(join(root, 'sites'), { recursive: true });
-  const origHtml = readFileSync(
-    resolve(process.cwd(), 'app', 'case-study.html'),
-    'utf8',
-  );
-  writeFileSync(join(root, 'app', 'case-study.html'), origHtml, 'utf8');
-  const origJs = readFileSync(
-    resolve(process.cwd(), 'app', 'case-study.js'),
-    'utf8',
-  );
-  writeFileSync(join(root, 'app', 'case-study.js'), origJs, 'utf8');
-  const origCss = readFileSync(
-    resolve(process.cwd(), 'app', 'style.css'),
-    'utf8',
-  );
-  writeFileSync(join(root, 'app', 'style.css'), origCss, 'utf8');
+function createValidSiteAppDist(root: string) {
+  const dist = join(root, 'sites-app', 'dist');
+  mkdirSync(join(dist, 'client'), { recursive: true });
+  writeFileSync(join(dist, 'client', 'index.html'), '<html></html>', 'utf8');
+  mkdirSync(join(dist, 'client', 'assets'), { recursive: true });
+  writeFileSync(join(dist, 'client', 'assets', 'app.js'), 'export {};', 'utf8');
   writeFileSync(
-    join(root, 'sites', 'compatibility-worker.mjs'),
-    `export default { async fetch(request, env) { return env.ASSETS.fetch(request); } };`,
-    'utf8',
+    join(dist, 'client', 'assets', 'logo.bin'),
+    Buffer.from([0, 255, 1, 254]),
   );
+  mkdirSync(join(dist, 'server'), { recursive: true });
+  writeFileSync(join(dist, 'server', 'index.js'), 'export default () => {};', 'utf8');
+  mkdirSync(join(dist, 'server', 'chunks'), { recursive: true });
+  writeFileSync(join(dist, 'server', 'chunks', 'route.js'), 'export {};', 'utf8');
 }
 
-const EXPECTED_ARTIFACTS = [
-  '_worker.js',
-  'index.html',
-  'case-study.html',
-  'case-study.js',
-  'style.css',
-];
+function listRelativeFiles(root: string, current = root): string[] {
+  return readdirSync(current, { withFileTypes: true }).flatMap((entry) => {
+    const absolutePath = join(current, entry.name);
+    if (entry.isDirectory()) {
+      return listRelativeFiles(root, absolutePath);
+    }
+    return [absolutePath.slice(root.length + 1).replaceAll('\\', '/')];
+  }).sort();
+}
 
-test('buildSite produces the exact artifact root structure', async () => {
-  const tempRoot = createTempRoot();
+function createValidHostingJson(root: string) {
+  mkdirSync(join(root, '.openai'), { recursive: true });
+  writeFileSync(join(root, '.openai', 'hosting.json'), VALID_HOSTING_JSON, 'utf8');
+}
+
+function runFinalizer(root: string) {
+  return spawnSync(process.execPath, [FINALIZER, '--root', root], {
+    timeout: 30_000,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+}
+
+test('finalizeSiteBuild produces exact artifact root structure', () => {
+  const root = createTempRoot();
   try {
-    createRequiredInputs(tempRoot);
-    const outputRoot = join(tempRoot, 'dist');
-    const buildSite = await loadBuildSite();
-    await buildSite({ sourceRoot: tempRoot, outputRoot });
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
 
-    expect(existsSync(outputRoot)).toBe(true);
-    const entries = readdirSync(outputRoot).sort();
-    expect(entries).toEqual([...EXPECTED_ARTIFACTS].sort());
-  } finally {
-    removeTempRoot(tempRoot);
-  }
-});
+    const result = runFinalizer(root);
 
-test('built HTML files contain no unresolved template tokens and use approved fallback content', async () => {
-  const tempRoot = createTempRoot();
-  try {
-    createRequiredInputs(tempRoot);
-    const outputRoot = join(tempRoot, 'dist');
-    const buildSite = await loadBuildSite();
-    await buildSite({ sourceRoot: tempRoot, outputRoot });
+    expect(result.status).toBe(0);
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).toBe('');
 
-    for (const name of ['index.html', 'case-study.html']) {
-      const html = readFileSync(join(outputRoot, name), 'utf8');
+    const dist = join(root, 'dist');
+    expect(existsSync(dist)).toBe(true);
+    expect(existsSync(join(dist, 'client', 'index.html'))).toBe(true);
+    expect(existsSync(join(dist, 'server', 'index.js'))).toBe(true);
+    expect(readFileSync(join(dist, 'package.json'), 'utf8')).toBe(
+      '{"type":"module"}\n',
+    );
+    expect(existsSync(join(dist, '.openai', 'hosting.json'))).toBe(true);
+    expect(JSON.parse(readFileSync(join(dist, '.openai', 'hosting.json'), 'utf8'))).toEqual(
+      JSON.parse(VALID_HOSTING_JSON),
+    );
+    expect(existsSync(join(dist, '_worker.js'))).toBe(false);
 
-      expect(html).not.toMatch(/\{\{/);
-      expect(html).toContain('data-source-commit="unavailable"');
-      expect(html).toContain('https://github.com/RomainROCH');
-      expect(html).toContain('Contact Romain on GitHub');
-      expect(html).toContain('Revenue Flow Guard \u2014 SaaS Release Confidence Sprint');
-      expect(html).toContain(
-        'Protect one revenue-critical SaaS journey with risk-driven Playwright tests, CI evidence, and a maintainable handoff.',
-      );
-      expect(html).not.toContain('View the interactive demo');
-      expect(html).toContain(
-        'Live evidence requires JavaScript; no result is shown in this static view.',
+    const sourceDist = join(root, 'sites-app', 'dist');
+    expect(listRelativeFiles(dist)).toEqual([
+      '.openai/hosting.json',
+      'package.json',
+      ...listRelativeFiles(sourceDist),
+    ].sort());
+    for (const relativePath of listRelativeFiles(sourceDist)) {
+      expect(readFileSync(join(dist, relativePath))).toEqual(
+        readFileSync(join(sourceDist, relativePath)),
       );
     }
+    expect(
+      readdirSync(root).some((entry) => entry.startsWith('.rfg-finalize-')),
+    ).toBe(false);
   } finally {
-    removeTempRoot(tempRoot);
+    removeTempRoot(root);
   }
 });
 
-test('buildSite removes stale output before writing', async () => {
-  const tempRoot = createTempRoot();
+test('finalizeSiteBuild replaces stale root dist and preserves sibling sentinel', () => {
+  const root = createTempRoot();
   try {
-    createRequiredInputs(tempRoot);
-    const outputRoot = join(tempRoot, 'dist');
-    mkdirSync(outputRoot, { recursive: true });
-    writeFileSync(join(outputRoot, 'stale.txt'), 'should be removed', 'utf8');
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
 
-    const buildSite = await loadBuildSite();
-    await buildSite({ sourceRoot: tempRoot, outputRoot });
+    const staleRoot = join(root, 'dist');
+    mkdirSync(staleRoot, { recursive: true });
+    writeFileSync(join(staleRoot, 'stale.txt'), 'should be removed', 'utf8');
 
-    expect(existsSync(join(outputRoot, 'stale.txt'))).toBe(false);
-    expect(existsSync(join(outputRoot, '_worker.js'))).toBe(true);
-    expect(existsSync(join(outputRoot, 'index.html'))).toBe(true);
+    const sibling = join(root, 'sibling');
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(join(sibling, 'sentinel.txt'), 'should survive', 'utf8');
+
+    const result = runFinalizer(root);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(join(root, 'dist', 'stale.txt'))).toBe(false);
+    expect(existsSync(join(root, 'dist', 'client', 'index.html'))).toBe(true);
+    expect(existsSync(join(root, 'dist', '.openai', 'hosting.json'))).toBe(true);
+    expect(readFileSync(join(sibling, 'sentinel.txt'), 'utf8')).toBe('should survive');
   } finally {
-    removeTempRoot(tempRoot);
+    removeTempRoot(root);
   }
 });
 
-test('buildSite source must use node:fs/promises and forbid synchronous fs APIs', () => {
-  const source = readFileSync(
-    resolve(process.cwd(), 'scripts', 'build-site.mjs'),
-    'utf8',
-  );
-  expect(source).toMatch(/from\s+['"]node:fs\/promises['"]/);
-  expect(source).not.toMatch(/\bexistsSync\b/);
-  expect(source).not.toMatch(/\brmSync\b/);
-  expect(source).not.toMatch(/\bmkdirSync\b/);
-  expect(source).not.toMatch(/\breadFileSync\b/);
-  expect(source).not.toMatch(/\bwriteFileSync\b/);
-  expect(source).not.toMatch(/\bcopyFileSync\b/);
+const INVALID_FIXTURES: Array<{
+  name: string;
+  expectedCode: string;
+  setup: (root: string) => void;
+  outputCanBeCleaned?: boolean;
+}> = [
+  {
+    name: 'relative root',
+    expectedCode: 'ERR_RELATIVE_ROOT',
+    setup: () => {},
+    outputCanBeCleaned: false,
+  },
+  {
+    name: 'missing hosting ancestor',
+    expectedCode: 'ERR_HOSTING_ANCESTOR_INVALID',
+    setup: (root) => {
+      createValidSiteAppDist(root);
+    },
+  },
+  {
+    name: 'missing hosting JSON',
+    expectedCode: 'ERR_HOSTING_NOT_FILE',
+    setup: (root) => {
+      createValidSiteAppDist(root);
+      mkdirSync(join(root, '.openai'), { recursive: true });
+    },
+  },
+  {
+    name: 'malformed hosting JSON',
+    expectedCode: 'ERR_HOSTING_INVALID_JSON',
+    setup: (root) => {
+      createValidSiteAppDist(root);
+      mkdirSync(join(root, '.openai'), { recursive: true });
+      writeFileSync(join(root, '.openai', 'hosting.json'), 'not json', 'utf8');
+    },
+  },
+  {
+    name: 'hosting JSON is not an object',
+    expectedCode: 'ERR_HOSTING_NOT_OBJECT',
+    setup: (root) => {
+      createValidSiteAppDist(root);
+      mkdirSync(join(root, '.openai'), { recursive: true });
+      writeFileSync(join(root, '.openai', 'hosting.json'), 'null', 'utf8');
+    },
+  },
+  {
+    name: 'missing client directory',
+    expectedCode: 'ERR_MISSING_CLIENT_DIR',
+    setup: (root) => {
+      createValidHostingJson(root);
+      const dist = join(root, 'sites-app', 'dist');
+      mkdirSync(join(dist, 'server'), { recursive: true });
+      writeFileSync(join(dist, 'server', 'index.js'), 'export default () => {};', 'utf8');
+    },
+  },
+  {
+    name: 'missing server/index.js',
+    expectedCode: 'ERR_MISSING_SERVER_INDEX',
+    setup: (root) => {
+      createValidHostingJson(root);
+      const dist = join(root, 'sites-app', 'dist');
+      mkdirSync(join(dist, 'client'), { recursive: true });
+      writeFileSync(join(dist, 'client', 'index.html'), '<html></html>', 'utf8');
+    },
+  },
+  {
+    name: 'unexpected extra hosting key',
+    expectedCode: 'ERR_HOSTING_EXTRA_KEYS',
+    setup: (root) => {
+      createValidSiteAppDist(root);
+      mkdirSync(join(root, '.openai'), { recursive: true });
+      writeFileSync(
+        join(root, '.openai', 'hosting.json'),
+        JSON.stringify({ project_id: TEST_PROJECT_ID, extra: 'bad' }),
+        'utf8',
+      );
+    },
+  },
+  {
+    name: 'unexpected artifact _worker.js',
+    expectedCode: 'ERR_SOURCE_WORKER_JS',
+    setup: (root) => {
+      createValidSiteAppDist(root);
+      createValidHostingJson(root);
+      writeFileSync(
+        join(root, 'sites-app', 'dist', '_worker.js'),
+        'export default {};',
+        'utf8',
+      );
+    },
+  },
+];
+
+for (const {
+  name,
+  expectedCode,
+  setup,
+  outputCanBeCleaned = true,
+} of INVALID_FIXTURES) {
+  test(`finalizeSiteBuild rejects invalid fixture: ${name}`, () => {
+    const root = createTempRoot();
+    try {
+      setup(root);
+
+      const staleRoot = join(root, 'dist');
+      mkdirSync(staleRoot, { recursive: true });
+      writeFileSync(join(staleRoot, 'stale.txt'), 'must be removed', 'utf8');
+
+      const sibling = join(root, 'sibling');
+      mkdirSync(sibling, { recursive: true });
+      writeFileSync(join(sibling, 'sentinel.txt'), 'must survive', 'utf8');
+
+      const result = runFinalizer(
+        name === 'relative root' ? 'relative/path' : root,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr.trim()).toBe(`FINALIZE_SITE_BUILD: ${expectedCode}`);
+      expect(result.stderr).not.toContain(TEST_PROJECT_ID);
+
+      expect(existsSync(join(root, 'dist'))).toBe(!outputCanBeCleaned);
+      expect(readFileSync(join(sibling, 'sentinel.txt'), 'utf8')).toBe('must survive');
+    } finally {
+      removeTempRoot(root);
+    }
+  });
+}
+
+test('finalizeSiteBuild resolves its default root from the script location', () => {
+  const root = createTempRoot();
+  try {
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
+    const scriptsDir = join(root, 'scripts');
+    mkdirSync(scriptsDir, { recursive: true });
+    const copiedFinalizer = join(scriptsDir, 'finalize-site-build.mjs');
+    copyFileSync(FINALIZER, copiedFinalizer);
+
+    const unrelatedCwd = join(root, 'unrelated-cwd');
+    mkdirSync(unrelatedCwd, { recursive: true });
+    const result = spawnSync(process.execPath, [copiedFinalizer], {
+      cwd: unrelatedCwd,
+      timeout: 30_000,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(root, 'dist', 'client', 'index.html'))).toBe(true);
+    expect(existsSync(join(unrelatedCwd, 'dist'))).toBe(false);
+  } finally {
+    removeTempRoot(root);
+  }
 });
 
-test('buildSite rejects non-dist sibling output and leaves sentinel intact', async () => {
-  const tempRoot = createTempRoot();
+test('finalizeSiteBuild rejects unsupported filesystem entries', async ({}, testInfo) => {
+  testInfo.skip(process.platform === 'win32', 'portable FIFO creation is unavailable on Windows');
+
+  const root = createTempRoot();
   try {
-    createRequiredInputs(tempRoot);
-    const sentinelContent = 'should survive build';
-    const siblingRoot = join(tempRoot, 'not-dist');
-    mkdirSync(siblingRoot, { recursive: true });
-    writeFileSync(join(siblingRoot, 'sentinel.txt'), sentinelContent, 'utf8');
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
+    const fifoPath = join(root, 'sites-app', 'dist', 'client', 'unsupported.fifo');
+    const fifo = spawnSync('mkfifo', [fifoPath], { encoding: 'utf8' });
+    expect(fifo.status, fifo.stderr).toBe(0);
 
-    const buildSite = await loadBuildSite();
-    await expect(
-      buildSite({ sourceRoot: tempRoot, outputRoot: siblingRoot }),
-    ).rejects.toThrow();
-
-    expect(existsSync(siblingRoot)).toBe(true);
-    expect(readFileSync(join(siblingRoot, 'sentinel.txt'), 'utf8')).toBe(
-      sentinelContent,
+    const result = runFinalizer(root);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr.trim()).toBe(
+      'FINALIZE_SITE_BUILD: ERR_SOURCE_UNSUPPORTED_ENTRY',
     );
+    expect(existsSync(join(root, 'dist'))).toBe(false);
   } finally {
-    removeTempRoot(tempRoot);
+    removeTempRoot(root);
   }
 });
 
-test('buildSite rejects case-variant DIST output on case-sensitive platforms', async () => {
-  test.skip(
-    process.platform === 'win32',
-    'Case-insensitive filesystem cannot distinguish DIST from dist',
-  );
-
-  const tempRoot = createTempRoot();
+test('finalizeSiteBuild rejects symlink within sites-app/dist', async ({}, testInfo) => {
+  let canSymlink = false;
+  const probeRoot = mkdtempSync(join(tmpdir(), 'finalize-site-symlink-probe-'));
   try {
-    createRequiredInputs(tempRoot);
-    const distRoot = join(tempRoot, 'DIST');
-    mkdirSync(distRoot, { recursive: true });
-    writeFileSync(join(distRoot, 'sentinel.txt'), 'must survive', 'utf8');
-
-    const buildSite = await loadBuildSite();
-    await expect(
-      buildSite({ sourceRoot: tempRoot, outputRoot: distRoot }),
-    ).rejects.toThrow();
-    expect(readFileSync(join(distRoot, 'sentinel.txt'), 'utf8')).toBe(
-      'must survive',
-    );
+    const probe = join(probeRoot, 'source');
+    writeFileSync(probe, 'probe', 'utf8');
+    const link = join(probeRoot, 'link');
+    symlinkSync(probe, link);
+    canSymlink = true;
+  } catch {
+    // symlink creation not available
   } finally {
-    removeTempRoot(tempRoot);
+    removeTempRoot(probeRoot);
   }
-});
+  testInfo.skip(!canSymlink, 'symlink creation not available');
 
-test('buildSite rejects input with missing template token and does not write dist', async () => {
-  const tempRoot = createTempRoot();
+  const root = createTempRoot();
   try {
-    createRequiredInputs(tempRoot);
-    const htmlPath = join(tempRoot, 'app', 'case-study.html');
-    const origHtml = readFileSync(htmlPath, 'utf8');
-    writeFileSync(htmlPath, origHtml.replace('{{PUBLICATION_STATUS}}', ''), 'utf8');
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
 
-    const outputRoot = join(tempRoot, 'dist');
-    mkdirSync(outputRoot, { recursive: true });
-    writeFileSync(join(outputRoot, 'stale.txt'), 'must be removed', 'utf8');
-    const buildSite = await loadBuildSite();
-    await expect(
-      buildSite({ sourceRoot: tempRoot, outputRoot }),
-    ).rejects.toThrow();
-
-    expect(existsSync(outputRoot)).toBe(false);
-  } finally {
-    removeTempRoot(tempRoot);
-  }
-});
-
-test('buildSite rejects input with missing nav marker and does not write dist', async () => {
-  const tempRoot = createTempRoot();
-  try {
-    createRequiredInputs(tempRoot);
-    const htmlPath = join(tempRoot, 'app', 'case-study.html');
-    const origHtml = readFileSync(htmlPath, 'utf8');
-    writeFileSync(
-      htmlPath,
-      origHtml.replace(
-        '<a href="/">View the interactive demo</a>',
-        '<a href="/">Different link text</a>',
-      ),
-      'utf8',
+    symlinkSync(
+      join(root, 'sites-app', 'dist', 'client', 'index.html'),
+      join(root, 'sites-app', 'dist', 'client', 'evil-link.html'),
     );
 
-    const outputRoot = join(tempRoot, 'dist');
-    mkdirSync(outputRoot, { recursive: true });
-    writeFileSync(join(outputRoot, 'stale.txt'), 'must be removed', 'utf8');
-    const buildSite = await loadBuildSite();
-    await expect(
-      buildSite({ sourceRoot: tempRoot, outputRoot }),
-    ).rejects.toThrow();
+    const staleRoot = join(root, 'dist');
+    mkdirSync(staleRoot, { recursive: true });
+    writeFileSync(join(staleRoot, 'stale.txt'), 'must be removed', 'utf8');
 
-    expect(existsSync(outputRoot)).toBe(false);
+    const sibling = join(root, 'sibling');
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(join(sibling, 'sentinel.txt'), 'must survive', 'utf8');
+
+    const result = runFinalizer(root);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr.trim()).toBe('FINALIZE_SITE_BUILD: ERR_SOURCE_SYMLINK');
+    expect(existsSync(join(root, 'dist'))).toBe(false);
+    expect(readFileSync(join(sibling, 'sentinel.txt'), 'utf8')).toBe('must survive');
   } finally {
-    removeTempRoot(tempRoot);
+    removeTempRoot(root);
+  }
+});
+
+test('finalizeSiteBuild rejects .openai as symlink/junction', () => {
+  const root = createTempRoot();
+  try {
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
+
+    rmSync(join(root, '.openai'), { recursive: true });
+    const fakeOpenai = join(root, 'fake-openai');
+    mkdirSync(fakeOpenai, { recursive: true });
+    writeFileSync(join(fakeOpenai, 'hosting.json'), VALID_HOSTING_JSON, 'utf8');
+    symlinkSync(
+      fakeOpenai,
+      join(root, '.openai'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const staleRoot = join(root, 'dist');
+    mkdirSync(staleRoot, { recursive: true });
+    writeFileSync(join(staleRoot, 'stale.txt'), 'must be removed', 'utf8');
+
+    const sibling = join(root, 'sibling');
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(join(sibling, 'sentinel.txt'), 'must survive', 'utf8');
+
+    const result = runFinalizer(root);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr.trim()).toBe('FINALIZE_SITE_BUILD: ERR_HOSTING_ANCESTOR_INVALID');
+    expect(result.stderr).not.toContain(TEST_PROJECT_ID);
+    expect(existsSync(join(root, 'dist'))).toBe(false);
+    expect(readFileSync(join(sibling, 'sentinel.txt'), 'utf8')).toBe('must survive');
+  } finally {
+    removeTempRoot(root);
+  }
+});
+
+test('finalizeSiteBuild rejects sites-app as symlink/junction', () => {
+  const root = createTempRoot();
+  try {
+    createValidSiteAppDist(root);
+    createValidHostingJson(root);
+
+    rmSync(join(root, 'sites-app'), { recursive: true });
+    const fakeSitesApp = join(root, 'fake-sites-app');
+    mkdirSync(join(fakeSitesApp, 'dist', 'client'), { recursive: true });
+    writeFileSync(join(fakeSitesApp, 'dist', 'client', 'index.html'), '<html></html>', 'utf8');
+    mkdirSync(join(fakeSitesApp, 'dist', 'server'), { recursive: true });
+    writeFileSync(join(fakeSitesApp, 'dist', 'server', 'index.js'), 'export default () => {};', 'utf8');
+    symlinkSync(
+      fakeSitesApp,
+      join(root, 'sites-app'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    const staleRoot = join(root, 'dist');
+    mkdirSync(staleRoot, { recursive: true });
+    writeFileSync(join(staleRoot, 'stale.txt'), 'must be removed', 'utf8');
+
+    const sibling = join(root, 'sibling');
+    mkdirSync(sibling, { recursive: true });
+    writeFileSync(join(sibling, 'sentinel.txt'), 'must survive', 'utf8');
+
+    const result = runFinalizer(root);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr.trim()).toBe('FINALIZE_SITE_BUILD: ERR_SOURCE_ANCESTOR_INVALID');
+    expect(result.stderr).not.toContain(TEST_PROJECT_ID);
+    expect(existsSync(join(root, 'dist'))).toBe(false);
+    expect(readFileSync(join(sibling, 'sentinel.txt'), 'utf8')).toBe('must survive');
+  } finally {
+    removeTempRoot(root);
   }
 });

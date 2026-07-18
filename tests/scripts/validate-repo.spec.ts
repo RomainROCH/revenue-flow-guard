@@ -3,7 +3,7 @@ import {
   spawnSync,
   type SpawnSyncReturns,
 } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -651,6 +651,271 @@ test('accepts a consumed default fixture export', async () => {
     expect(result.status, result.stderr).toBe(0);
   } finally {
     await removeRepository(root);
+  }
+});
+
+test('accepts a script reachable through a workspace array form entry', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    await writeRepositoryFile(
+      root,
+      'package.json',
+      JSON.stringify(
+        {
+          name: 'validate-repo-fixture',
+          private: true,
+          workspaces: ['packages/app'],
+          scripts: {
+            validate: 'node scripts/entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await writeRepositoryFile(
+      root,
+      'packages/app/package.json',
+      JSON.stringify(
+        {
+          name: 'app',
+          private: true,
+          scripts: {
+            build: 'node ../../scripts/workspace-entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await writeRepositoryFile(
+      root,
+      'scripts/workspace-entry.mjs',
+      "export const workspaceEntry = true;\n",
+    );
+
+    const result = runValidator(root);
+    expect(result.status, result.stderr).toBe(0);
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('accepts a script reachable through a workspace object form entry', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    await writeRepositoryFile(
+      root,
+      'package.json',
+      JSON.stringify(
+        {
+          name: 'validate-repo-fixture',
+          private: true,
+          workspaces: { packages: ['packages/app'] },
+          scripts: {
+            validate: 'node scripts/entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await writeRepositoryFile(
+      root,
+      'packages/app/package.json',
+      JSON.stringify(
+        {
+          name: 'app',
+          private: true,
+          scripts: {
+            build: 'node ../../scripts/workspace-entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await writeRepositoryFile(
+      root,
+      'scripts/workspace-entry.mjs',
+      "export const workspaceEntry = true;\n",
+    );
+
+    const result = runValidator(root);
+    expect(result.status, result.stderr).toBe(0);
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a workspace entry with glob metacharacters', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    await writeRepositoryFile(
+      root,
+      'package.json',
+      JSON.stringify(
+        {
+          name: 'validate-repo-fixture',
+          private: true,
+          workspaces: ['packages/*'],
+          scripts: {
+            validate: 'node scripts/entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    expectRejected(runValidator(root), 'glob metacharacters');
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a workspace entry outside the repository', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    await writeRepositoryFile(
+      root,
+      'package.json',
+      JSON.stringify(
+        {
+          name: 'validate-repo-fixture',
+          private: true,
+          workspaces: ['../outside'],
+          scripts: {
+            validate: 'node scripts/entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    expectRejected(runValidator(root), 'outside the repository');
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a workspace entry whose package.json is missing', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    await writeRepositoryFile(
+      root,
+      'package.json',
+      JSON.stringify(
+        {
+          name: 'validate-repo-fixture',
+          private: true,
+          workspaces: ['packages/missing'],
+          scripts: {
+            validate: 'node scripts/entry.mjs',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    expectRejected(runValidator(root), 'missing or invalid');
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a malformed workspace object without an array of packages', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    const packageJson = JSON.parse(completeFiles['package.json']);
+    packageJson.workspaces = { packages: null };
+    await writeRepositoryFile(root, 'package.json', JSON.stringify(packageJson));
+
+    expectRejected(runValidator(root), 'Workspace declaration is invalid');
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects an explicit null workspace declaration', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    const packageJson = JSON.parse(completeFiles['package.json']);
+    packageJson.workspaces = null;
+    await writeRepositoryFile(root, 'package.json', JSON.stringify(packageJson));
+
+    expectRejected(runValidator(root), 'Workspace declaration is invalid');
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a non-string workspace entry without reflecting it', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    const packageJson = JSON.parse(completeFiles['package.json']);
+    packageJson.workspaces = [{ secret: 'WORKSPACE_SECRET_SENTINEL' }];
+    await writeRepositoryFile(root, 'package.json', JSON.stringify(packageJson));
+
+    const result = runValidator(root);
+    expectRejected(result, 'Workspace entry must be a literal string');
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain(
+      'WORKSPACE_SECRET_SENTINEL',
+    );
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a workspace package.json whose JSON value is null', async () => {
+  const root = await createCompleteRepository();
+
+  try {
+    const packageJson = JSON.parse(completeFiles['package.json']);
+    packageJson.workspaces = ['packages/app'];
+    await writeRepositoryFile(root, 'package.json', JSON.stringify(packageJson));
+    await writeRepositoryFile(root, 'packages/app/package.json', 'null');
+
+    expectRejected(runValidator(root), 'Workspace package.json must be an object');
+  } finally {
+    await removeRepository(root);
+  }
+});
+
+test('rejects a workspace symlink or junction that resolves outside the repository', async () => {
+  const root = await createCompleteRepository();
+  const external = await mkdtemp(path.join(tmpdir(), 'validate-repo-workspace-external-'));
+
+  try {
+    const packageJson = JSON.parse(completeFiles['package.json']);
+    packageJson.workspaces = ['packages/app'];
+    await writeRepositoryFile(root, 'package.json', JSON.stringify(packageJson));
+    await writeRepositoryFile(
+      external,
+      'package.json',
+      JSON.stringify({ name: 'external', scripts: {} }),
+    );
+    await mkdir(path.join(root, 'packages'), { recursive: true });
+    await symlink(
+      external,
+      path.join(root, 'packages', 'app'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    expectRejected(runValidator(root), 'Workspace path is not a real repository directory');
+  } finally {
+    await removeRepository(root);
+    await rm(external, { recursive: true, force: true });
   }
 });
 

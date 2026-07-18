@@ -358,7 +358,7 @@ test.describe('release-check orchestration', () => {
   }
 
   const CANONICAL_SCRIPTS = [
-    'lint', 'typecheck', 'test:repeat', 'verify:quality',
+    'lint', 'typecheck', 'test:sites', 'test:repeat', 'verify:quality',
     'build:evidence', 'validate:public-artifacts', 'scan:secrets',
     'validate:docs', 'validate:repo', 'validate:workflows',
     'validate:publication-inputs',

@@ -6,7 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const checkout = 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6';
 const setupNode = 'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6';
 const uploadArtifact = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7';
-const requiredGateExpression = "\${{ steps.workflow_policy.outcome == 'success' && steps.lint.outcome == 'success' && steps.typecheck.outcome == 'success' && steps.quality.outcome == 'success' }}";
+const requiredGateExpression = "\${{ steps.workflow_policy.outcome == 'success' && steps.lint.outcome == 'success' && steps.typecheck.outcome == 'success' && steps.sites.outcome == 'success' && steps.quality.outcome == 'success' }}";
 
 function occurrences(text, fragment) {
   return text.split(fragment).length - 1;
@@ -80,6 +80,9 @@ function validatePullRequestWorkflow(text) {
     '- name: Typecheck',
     'id: typecheck',
     'run: npm run typecheck',
+    '- name: Validate Sites adapter',
+    'id: sites',
+    'run: npm run test:sites',
     '- name: Verify deterministic quality',
     'id: quality',
     'run: npm run verify:quality',
@@ -104,6 +107,7 @@ function validatePullRequestWorkflow(text) {
     'Validate workflow policy',
     'Lint',
     'Typecheck',
+    'Validate Sites adapter',
     'Verify deterministic quality',
     'Build public evidence',
     'Validate public artifacts',
@@ -114,6 +118,7 @@ function validatePullRequestWorkflow(text) {
     ['Validate workflow policy', ['id: workflow_policy', 'run: npm run validate:workflows']],
     ['Lint', ['id: lint', 'run: npm run lint']],
     ['Typecheck', ['id: typecheck', 'run: npm run typecheck']],
+    ['Validate Sites adapter', ['id: sites', 'run: npm run test:sites']],
     ['Verify deterministic quality', ['id: quality', 'run: npm run verify:quality']],
     ['Build public evidence', [`RFG_REQUIRED_GATES_PASSED: ${requiredGateExpression}`, 'run: npm run build:evidence']],
     ['Validate public artifacts', ['run: npm run validate:public-artifacts']],
@@ -127,7 +132,7 @@ function validatePullRequestWorkflow(text) {
     alwaysSteps.every(([name, fragments]) =>
       stepHasAll(text, name, ['if: ${{ always() }}', ...fragments]),
     ) &&
-    occurrences(text, 'if: ${{ always() }}') === 8 &&
+    occurrences(text, 'if: ${{ always() }}') === 9 &&
     occurrences(text, '- main') === 2 &&
     occurrences(text, '- master') === 2 &&
     occurrences(text, 'artifacts/public-evidence') === 1 &&
@@ -137,6 +142,7 @@ function validatePullRequestWorkflow(text) {
     !text.includes('internal-proof') &&
     !text.includes('npm run baseline:json') &&
     !text.includes('npm run prove:regressions') &&
+    !text.includes('npm run test:sites:public') &&
     !text.includes('run: npx playwright test\n') &&
     !text.includes('actions/cache@') &&
     !text.includes('playwright/.cache') &&

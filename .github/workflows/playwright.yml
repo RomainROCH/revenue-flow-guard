@@ -56,6 +56,11 @@ jobs:
         if: ${{ always() }}
         run: npm run typecheck
 
+      - name: Validate Sites adapter
+        id: sites
+        if: ${{ always() }}
+        run: npm run test:sites
+
       - name: Verify deterministic quality
         id: quality
         if: ${{ always() }}
@@ -64,7 +69,7 @@ jobs:
       - name: Build public evidence
         if: ${{ always() }}
         env:
-          RFG_REQUIRED_GATES_PASSED: ${{ steps.workflow_policy.outcome == 'success' && steps.lint.outcome == 'success' && steps.typecheck.outcome == 'success' && steps.quality.outcome == 'success' }}
+          RFG_REQUIRED_GATES_PASSED: ${{ steps.workflow_policy.outcome == 'success' && steps.lint.outcome == 'success' && steps.typecheck.outcome == 'success' && steps.sites.outcome == 'success' && steps.quality.outcome == 'success' }}
         run: npm run build:evidence
 
       - name: Validate public artifacts

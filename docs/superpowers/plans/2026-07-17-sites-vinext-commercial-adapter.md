@@ -13,7 +13,7 @@
 **Files:**
 - Modify `tests/meta/project-contract.spec.ts`
 - Replace `tests/scripts/build-site.spec.ts`
-- Create `tests/sites/runtime-parity.spec.ts`
+- Create `tests/scripts/sites-runtime-parity.spec.ts`
 - Modify `playwright.config.ts`
 - Modify `package.json`
 

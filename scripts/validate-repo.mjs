@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from 'node:fs/promises';
+import { access, lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -383,6 +383,110 @@ async function validateScripts(root, packageJson) {
       diagnostics.push(`Package script target is missing: ${target}`);
     } else if (scriptByPath.has(normalizePath(targetPath))) {
       entrypoints.push(targetPath);
+    }
+  }
+
+  const GLOB_RE = /[*?[\]{}!]/;
+  const workspaceDeclaration = packageJson.workspaces;
+  if (Object.prototype.hasOwnProperty.call(packageJson, 'workspaces')) {
+    let workspaceEntries;
+    if (Array.isArray(workspaceDeclaration)) {
+      workspaceEntries = workspaceDeclaration;
+    } else if (
+      typeof workspaceDeclaration === 'object' &&
+      workspaceDeclaration !== null &&
+      !Array.isArray(workspaceDeclaration) &&
+      Array.isArray(workspaceDeclaration.packages)
+    ) {
+      workspaceEntries = workspaceDeclaration.packages;
+    } else {
+      diagnostics.push('Workspace declaration is invalid');
+      workspaceEntries = [];
+    }
+
+    const canonicalRoot = await realpath(root);
+    for (const entry of workspaceEntries) {
+      if (typeof entry !== 'string') {
+        diagnostics.push('Workspace entry must be a literal string');
+        continue;
+      }
+      if (GLOB_RE.test(entry)) {
+        diagnostics.push('Workspace entry contains glob metacharacters');
+        continue;
+      }
+      const workspaceDir = path.resolve(root, entry);
+      if (!isInside(workspaceDir, root)) {
+        diagnostics.push('Workspace entry is outside the repository');
+        continue;
+      }
+      if (normalizePath(workspaceDir) === normalizePath(root)) {
+        diagnostics.push('Workspace entry is the repository root');
+        continue;
+      }
+
+      let workspaceStat;
+      let canonicalWorkspace;
+      try {
+        workspaceStat = await lstat(workspaceDir);
+        canonicalWorkspace = await realpath(workspaceDir);
+      } catch {
+        diagnostics.push('Workspace package.json is missing or invalid');
+        continue;
+      }
+      if (
+        workspaceStat.isSymbolicLink() ||
+        !workspaceStat.isDirectory() ||
+        !isInside(canonicalWorkspace, canonicalRoot)
+      ) {
+        diagnostics.push('Workspace path is not a real repository directory');
+        continue;
+      }
+
+      const workspacePackagePath = path.join(workspaceDir, 'package.json');
+      let workspacePackageJson;
+      try {
+        const packageStat = await lstat(workspacePackagePath);
+        const canonicalPackage = await realpath(workspacePackagePath);
+        if (
+          packageStat.isSymbolicLink() ||
+          !packageStat.isFile() ||
+          !isInside(canonicalPackage, canonicalWorkspace) ||
+          !isInside(canonicalPackage, canonicalRoot)
+        ) {
+          throw new Error('invalid workspace package');
+        }
+        const content = await readFile(workspacePackagePath, 'utf8');
+        workspacePackageJson = JSON.parse(content);
+      } catch {
+        diagnostics.push('Workspace package.json is missing or invalid');
+        continue;
+      }
+      if (
+        typeof workspacePackageJson !== 'object' ||
+        workspacePackageJson === null ||
+        Array.isArray(workspacePackageJson)
+      ) {
+        diagnostics.push('Workspace package.json must be an object');
+        continue;
+      }
+      const workspaceTargets = Object.values(
+        workspacePackageJson.scripts ?? {},
+      ).flatMap(
+        (command) =>
+          typeof command === 'string' ? nodeTargets(command) : [],
+      );
+      for (const target of workspaceTargets) {
+        const targetPath = path.resolve(workspaceDir, target);
+        if (!isInside(targetPath, root)) {
+          diagnostics.push(
+            `Package script target is outside the repository: ${target}`,
+          );
+        } else if (!(await fileExists(targetPath))) {
+          diagnostics.push(`Package script target is missing: ${target}`);
+        } else if (scriptByPath.has(normalizePath(targetPath))) {
+          entrypoints.push(targetPath);
+        }
+      }
     }
   }
 

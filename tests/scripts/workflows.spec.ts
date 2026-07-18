@@ -61,6 +61,7 @@ test.describe('authoritative pull-request workflow', () => {
       'Validate workflow policy',
       'Lint',
       'Typecheck',
+      'Validate Sites adapter',
       'Verify deterministic quality',
       'Build public evidence',
       'Validate public artifacts',
@@ -86,6 +87,9 @@ test.describe('authoritative pull-request workflow', () => {
     expect(expectAlwaysRunStep(workflow, 'Typecheck', 'npm run typecheck')).toContain(
       'id: typecheck',
     );
+    expect(expectAlwaysRunStep(workflow, 'Validate Sites adapter', 'npm run test:sites')).toContain(
+      'id: sites',
+    );
     expect(
       expectAlwaysRunStep(
         workflow,
@@ -104,6 +108,7 @@ test.describe('authoritative pull-request workflow', () => {
       "steps.workflow_policy.outcome == 'success'",
       "steps.lint.outcome == 'success'",
       "steps.typecheck.outcome == 'success'",
+      "steps.sites.outcome == 'success'",
       "steps.quality.outcome == 'success'",
     ]) {
       expect(build).toContain(outcome);
@@ -121,6 +126,7 @@ test.describe('authoritative pull-request workflow', () => {
     );
     expect(workflow).not.toContain('npm run baseline:json');
     expect(workflow).not.toContain('npm run prove:regressions');
+    expect(workflow).not.toContain('npm run test:sites:public');
     expect(workflow).not.toContain('run: npx playwright test\n');
   });
 
@@ -232,6 +238,45 @@ test('handles CRLF line endings in canonical workflow files', () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout.trim()).toBe('Workflow policy validated.');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('rejects the post-deployment Sites smoke in the pre-deployment workflow', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'rfg-workflow-sites-public-'));
+  try {
+    mkdirSync(join(tmp, 'scripts'), { recursive: true });
+    mkdirSync(join(tmp, '.github', 'workflows'), { recursive: true });
+    cpSync(
+      join(root, 'scripts', 'validate-workflows.mjs'),
+      join(tmp, 'scripts', 'validate-workflows.mjs'),
+    );
+
+    const files: Array<[string, string]> = [
+      ['.github/workflows/playwright.yml', join(root, '.github/workflows/playwright.yml')],
+      ['.github/workflows/cross-browser.yml', join(root, '.github/workflows/cross-browser.yml')],
+      ['playwright.cross-browser.config.ts', join(root, 'playwright.cross-browser.config.ts')],
+      ['package.json', join(root, 'package.json')],
+    ];
+    for (const [relative, source] of files) {
+      let content = readFileSync(source, 'utf8');
+      if (relative === '.github/workflows/playwright.yml') {
+        content = content.replace(
+          'run: npm run test:sites',
+          'run: npm run test:sites:public',
+        );
+      }
+      writeFileSync(join(tmp, relative), content, 'utf8');
+    }
+
+    const result = spawnSync(process.execPath, ['scripts/validate-workflows.mjs'], {
+      cwd: tmp,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+
+    expect(result.status).toBe(1);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

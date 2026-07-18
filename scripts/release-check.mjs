@@ -69,6 +69,7 @@ async function runNpm(scriptName, cwd, env) {
 const CANONICAL_SCRIPTS = [
   'lint',
   'typecheck',
+  'test:sites',
   'test:repeat',
   'verify:quality',
   'build:evidence',

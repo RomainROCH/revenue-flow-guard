@@ -11,3 +11,6 @@ test-results/
 .worktrees/
 .opencode-workers/
 .wrangler/
+sites-app/dist/
+sites-app/.next/
+sites-app/public/style.css

@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testIgnore: ['**/sites/**'],
+  testIgnore: ['**/sites/**', '**/sites-public/**'],
   retries: 0,
   reporter: [['html'], ['list']],
   use: {

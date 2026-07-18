@@ -7,7 +7,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noEmit": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "resolveJsonModule": true
   },
-  "include": ["playwright.config.ts", "playwright.sites.config.ts", "tests/**/*.ts"]
+  "include": ["playwright.config.ts", "playwright.sites.config.ts", "playwright.sites-public.config.ts", "tests/**/*.ts"]
 }
